@@ -1,0 +1,2 @@
+# Performance benchmarks
+pass

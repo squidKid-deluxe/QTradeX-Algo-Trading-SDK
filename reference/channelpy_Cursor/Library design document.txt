@@ -1,0 +1,1672 @@
+Channel Algebra Python Library: Complete Architecture
+Library Design Document
+
+XXVI. channelpy: A Complete Implementation
+Introduction
+We'll design a production-ready Python library that implements all concepts from this paper. The library will be:
+
+Modular: Clear separation of concerns
+Extensible: Easy to add custom encoders, interpreters
+Type-safe: Full type hints for IDE support
+Well-documented: Docstrings, examples, tutorials
+Performant: NumPy/SciPy for heavy lifting
+Tested: Comprehensive test suite
+
+
+A. Library Structure
+channelpy/
+├── __init__.py                 # Main exports
+├── core/                       # Core channel algebra
+│   ├── __init__.py
+│   ├── state.py               # State class and constants
+│   ├── operations.py          # gate, admit, overlay, weave, etc.
+│   ├── nested.py              # Nested channel states
+│   ├── parallel.py            # Parallel channel systems
+│   └── lattice.py             # Lattice operations
+│
+├── topology/                   # Topological features
+│   ├── __init__.py
+│   ├── betti.py               # Betti number computation
+│   ├── persistence.py         # Persistent homology
+│   ├── cobordism.py           # State transition topology
+│   ├── manifold.py            # Manifold structure detection
+│   └── mapper.py              # Mapper algorithm
+│
+├── combinators/               # Combinator calculus
+│   ├── __init__.py
+│   ├── basic.py               # S, K, I combinators
+│   ├── channel_combinators.py # Channel-specific combinators
+│   ├── composition.py         # Function composition utilities
+│   └── lazy.py                # Lazy evaluation
+│
+├── pipeline/                  # Data processing pipelines
+│   ├── __init__.py
+│   ├── base.py                # BasePipeline class
+│   ├── preprocessors.py       # Stage 1: Data prep
+│   ├── encoders.py            # Stage 2: Feature → State
+│   ├── interpreters.py        # Stage 3: State → Decision
+│   └── full_pipeline.py       # Complete pipeline
+│
+├── adaptive/                  # Adaptive thresholding
+│   ├── __init__.py
+│   ├── thresholds.py          # Threshold learners
+│   ├── streaming.py           # Online adaptation
+│   ├── scoring.py             # Feature scoring systems
+│   ├── topology_adaptive.py   # Topology-based adaptation
+│   └── multiscale.py          # Multi-scale tracking
+│
+├── fields/                    # Spatial channel fields
+│   ├── __init__.py
+│   ├── field.py               # ChannelField class
+│   ├── operations.py          # Field operations (map, reduce)
+│   └── lazy_field.py          # Lazy evaluation for large fields
+│
+├── applications/              # Domain-specific applications
+│   ├── __init__.py
+│   ├── trading.py             # Financial trading
+│   ├── medical.py             # Medical diagnosis
+│   ├── signals.py             # Signal processing
+│   ├── images.py              # Image processing
+│   └── text.py                # Text analysis
+│
+├── visualization/             # Plotting and visualization
+│   ├── __init__.py
+│   ├── states.py              # State plotting
+│   ├── fields.py              # Field visualization
+│   ├── topology.py            # Topological features
+│   └── pipelines.py           # Pipeline debugging plots
+│
+├── metrics/                   # Evaluation metrics
+│   ├── __init__.py
+│   ├── quality.py             # Encoding quality metrics
+│   ├── stability.py           # Threshold stability
+│   └── explainability.py      # Interpretability metrics
+│
+└── utils/                     # Utilities
+    ├── __init__.py
+    ├── validation.py          # Input validation
+    ├── serialization.py       # Save/load states
+    └── examples.py            # Example datasets
+
+B. Core Module (channelpy.core)
+1. state.py - The Foundation
+python"""
+Core channel state representation
+"""
+from typing import Optional, Union, Tuple
+from enum import Enum
+import numpy as np
+
+class State:
+    """
+    Channel algebra state with two bits: i (presence) and q (membership)
+    
+    Four possible states:
+    - EMPTY (∅): i=0, q=0  - Absent
+    - DELTA (δ): i=1, q=0  - Present but not member (puncture)
+    - PHI   (φ): i=0, q=1  - Not present but expected (hole)
+    - PSI   (ψ): i=1, q=1  - Present and member (resonant)
+    
+    Examples
+    --------
+    >>> state = State(i=1, q=1)  # ψ state
+    >>> print(state)
+    ψ
+    >>> state == PSI
+    True
+    """
+    
+    __slots__ = ('_i', '_q')
+    
+    def __init__(self, i: int, q: int):
+        """
+        Initialize channel state
+        
+        Parameters
+        ----------
+        i : int
+            Presence bit (0 or 1)
+        q : int
+            Membership bit (0 or 1)
+            
+        Raises
+        ------
+        ValueError
+            If i or q not in {0, 1}
+        """
+        if i not in (0, 1) or q not in (0, 1):
+            raise ValueError(f"Bits must be 0 or 1, got i={i}, q={q}")
+        
+        self._i = i
+        self._q = q
+    
+    @property
+    def i(self) -> int:
+        """Presence bit"""
+        return self._i
+    
+    @property
+    def q(self) -> int:
+        """Membership bit"""
+        return self._q
+    
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, State):
+            return False
+        return self.i == other.i and self.q == other.q
+    
+    def __hash__(self) -> int:
+        return hash((self.i, self.q))
+    
+    def __repr__(self) -> str:
+        return f"State(i={self.i}, q={self.q})"
+    
+    def __str__(self) -> str:
+        """Unicode representation"""
+        symbols = {
+            (0, 0): '∅',
+            (1, 0): 'δ',
+            (0, 1): 'φ',
+            (1, 1): 'ψ'
+        }
+        return symbols[(self.i, self.q)]
+    
+    def to_bits(self) -> Tuple[int, int]:
+        """Return as (i, q) tuple"""
+        return (self.i, self.q)
+    
+    def to_int(self) -> int:
+        """Convert to integer 0-3"""
+        return self.i * 2 + self.q
+    
+    @classmethod
+    def from_int(cls, value: int) -> 'State':
+        """Create state from integer 0-3"""
+        if not 0 <= value <= 3:
+            raise ValueError(f"Value must be 0-3, got {value}")
+        i = value // 2
+        q = value % 2
+        return cls(i, q)
+    
+    @classmethod
+    def from_name(cls, name: str) -> 'State':
+        """Create state from name"""
+        name_map = {
+            'empty': (0, 0), '∅': (0, 0),
+            'delta': (1, 0), 'δ': (1, 0),
+            'phi': (0, 1), 'φ': (0, 1),
+            'psi': (1, 1), 'ψ': (1, 1),
+        }
+        if name.lower() not in name_map:
+            raise ValueError(f"Unknown state name: {name}")
+        i, q = name_map[name.lower()]
+        return cls(i, q)
+    
+    def to_complex(self) -> complex:
+        """
+        Convert to complex number: i + iq
+        Useful for quantum/phase space interpretations
+        """
+        return self.i + 1j * self.q
+
+
+# Pre-defined state constants
+EMPTY = State(0, 0)
+DELTA = State(1, 0)
+PHI = State(0, 1)
+PSI = State(1, 1)
+
+
+class StateArray:
+    """
+    Efficient array of states using numpy
+    
+    Examples
+    --------
+    >>> states = StateArray.from_bits(i=[1,0,1], q=[1,1,0])
+    >>> states[0]
+    ψ
+    >>> len(states)
+    3
+    """
+    
+    def __init__(self, i: np.ndarray, q: np.ndarray):
+        """
+        Initialize state array
+        
+        Parameters
+        ----------
+        i : np.ndarray
+            Array of presence bits
+        q : np.ndarray
+            Array of membership bits
+        """
+        i = np.asarray(i, dtype=np.int8)
+        q = np.asarray(q, dtype=np.int8)
+        
+        if i.shape != q.shape:
+            raise ValueError("i and q must have same shape")
+        
+        self._i = i
+        self._q = q
+    
+    @classmethod
+    def from_bits(cls, i, q) -> 'StateArray':
+        """Create from bit arrays"""
+        return cls(i, q)
+    
+    @classmethod
+    def from_states(cls, states: list) -> 'StateArray':
+        """Create from list of State objects"""
+        i = np.array([s.i for s in states], dtype=np.int8)
+        q = np.array([s.q for s in states], dtype=np.int8)
+        return cls(i, q)
+    
+    @property
+    def i(self) -> np.ndarray:
+        """Presence bit array"""
+        return self._i
+    
+    @property
+    def q(self) -> np.ndarray:
+        """Membership bit array"""
+        return self._q
+    
+    def __len__(self) -> int:
+        return len(self._i)
+    
+    def __getitem__(self, idx) -> Union[State, 'StateArray']:
+        if isinstance(idx, int):
+            return State(int(self._i[idx]), int(self._q[idx]))
+        else:
+            return StateArray(self._i[idx], self._q[idx])
+    
+    def to_ints(self) -> np.ndarray:
+        """Convert to integer array 0-3"""
+        return self._i * 2 + self._q
+    
+    def to_strings(self) -> np.ndarray:
+        """Convert to string array"""
+        symbols = np.array(['∅', 'φ', 'δ', 'ψ'])
+        return symbols[self.to_ints()]
+    
+    def count_by_state(self) -> dict:
+        """Count occurrences of each state"""
+        ints = self.to_ints()
+        return {
+            EMPTY: np.sum(ints == 0),
+            PHI: np.sum(ints == 1),
+            DELTA: np.sum(ints == 2),
+            PSI: np.sum(ints == 3)
+        }
+2. operations.py - Core Operations
+python"""
+Core channel algebra operations
+"""
+from typing import Union, List
+import numpy as np
+from .state import State, StateArray, EMPTY, DELTA, PHI, PSI
+
+
+def gate(state: Union[State, StateArray]) -> Union[State, StateArray]:
+    """
+    Gate operation: Remove elements not validated by membership
+    
+    Rule: If q=0, set i=0
+    
+    ∅ → ∅
+    δ → ∅  (puncture removed)
+    φ → φ  (hole preserved)
+    ψ → ψ  (resonant preserved)
+    
+    Examples
+    --------
+    >>> gate(DELTA)
+    ∅
+    >>> gate(PSI)
+    ψ
+    """
+    if isinstance(state, State):
+        return State(state.i & state.q, state.q)
+    elif isinstance(state, StateArray):
+        return StateArray(state.i & state.q, state.q)
+    else:
+        raise TypeError(f"Expected State or StateArray, got {type(state)}")
+
+
+def admit(state: Union[State, StateArray]) -> Union[State, StateArray]:
+    """
+    Admit operation: Grant membership to present elements
+    
+    Rule: If i=1, set q=1
+    
+    ∅ → ∅
+    δ → ψ  (puncture validated)
+    φ → φ  (hole remains)
+    ψ → ψ  (already resonant)
+    
+    Examples
+    --------
+    >>> admit(DELTA)
+    ψ
+    >>> admit(EMPTY)
+    ∅
+    """
+    if isinstance(state, State):
+        return State(state.i, state.q | state.i)
+    elif isinstance(state, StateArray):
+        return StateArray(state.i, state.q | state.i)
+    else:
+        raise TypeError(f"Expected State or StateArray, got {type(state)}")
+
+
+def overlay(state1: Union[State, StateArray], 
+            state2: Union[State, StateArray]) -> Union[State, StateArray]:
+    """
+    Overlay operation: Bitwise OR (union)
+    
+    Takes maximum information from both states
+    
+    Examples
+    --------
+    >>> overlay(DELTA, PHI)
+    ψ
+    >>> overlay(EMPTY, PSI)
+    ψ
+    """
+    if isinstance(state1, State) and isinstance(state2, State):
+        return State(state1.i | state2.i, state1.q | state2.q)
+    elif isinstance(state1, StateArray) and isinstance(state2, StateArray):
+        return StateArray(state1.i | state2.i, state1.q | state2.q)
+    else:
+        raise TypeError("Both arguments must be same type (State or StateArray)")
+
+
+def weave(state1: Union[State, StateArray], 
+          state2: Union[State, StateArray]) -> Union[State, StateArray]:
+    """
+    Weave operation: Bitwise AND (intersection)
+    
+    Keeps only common information
+    
+    Examples
+    --------
+    >>> weave(PSI, DELTA)
+    δ
+    >>> weave(PHI, DELTA)
+    ∅
+    """
+    if isinstance(state1, State) and isinstance(state2, State):
+        return State(state1.i & state2.i, state1.q & state2.q)
+    elif isinstance(state1, StateArray) and isinstance(state2, StateArray):
+        return StateArray(state1.i & state2.i, state1.q & state2.q)
+    else:
+        raise TypeError("Both arguments must be same type (State or StateArray)")
+
+
+def comp(state: Union[State, StateArray]) -> Union[State, StateArray]:
+    """
+    Complement operation: Flip both bits
+    
+    ∅ ↔ ψ
+    δ ↔ φ
+    
+    Examples
+    --------
+    >>> comp(EMPTY)
+    ψ
+    >>> comp(DELTA)
+    φ
+    """
+    if isinstance(state, State):
+        return State(1 - state.i, 1 - state.q)
+    elif isinstance(state, StateArray):
+        return StateArray(1 - state.i, 1 - state.q)
+    else:
+        raise TypeError(f"Expected State or StateArray, got {type(state)}")
+
+
+def neg_i(state: Union[State, StateArray]) -> Union[State, StateArray]:
+    """Flip i-bit only"""
+    if isinstance(state, State):
+        return State(1 - state.i, state.q)
+    elif isinstance(state, StateArray):
+        return StateArray(1 - state.i, state.q)
+    else:
+        raise TypeError(f"Expected State or StateArray, got {type(state)}")
+
+
+def neg_q(state: Union[State, StateArray]) -> Union[State, StateArray]:
+    """Flip q-bit only"""
+    if isinstance(state, State):
+        return State(state.i, 1 - state.q)
+    elif isinstance(state, StateArray):
+        return StateArray(state.i, state.q)
+    else:
+        raise TypeError(f"Expected State or StateArray, got {type(state)}")
+
+
+# Functional composition helpers
+
+def compose(*operations):
+    """
+    Compose operations right-to-left
+    
+    Examples
+    --------
+    >>> admit_then_gate = compose(gate, admit)
+    >>> admit_then_gate(DELTA)
+    ψ
+    """
+    def composed(state):
+        result = state
+        for op in reversed(operations):
+            result = op(result)
+        return result
+    return composed
+
+
+def pipe(*operations):
+    """
+    Compose operations left-to-right
+    
+    Examples
+    --------
+    >>> process = pipe(admit, gate)
+    >>> process(DELTA)
+    ψ
+    """
+    def piped(state):
+        result = state
+        for op in operations:
+            result = op(result)
+        return result
+    return piped
+3. nested.py - Nested Channels
+python"""
+Nested channel states (hierarchical structure)
+"""
+from typing import Union, List, Optional, Dict
+from .state import State, EMPTY, DELTA, PHI, PSI
+
+
+class NestedState:
+    """
+    Nested channel state with multiple levels
+    
+    Each level is a State, forming a tree structure
+    
+    Examples
+    --------
+    >>> # Two-level nested state
+    >>> state = NestedState(
+    ...     level0=State(1, 1),
+    ...     level1=State(0, 1)
+    ... )
+    >>> print(state)
+    ψ.φ
+    >>> state.depth
+    1
+    """
+    
+    def __init__(self, **levels):
+        """
+        Initialize nested state
+        
+        Parameters
+        ----------
+        **levels : State
+            Keyword arguments level0, level1, level2, etc.
+        """
+        # Validate and store levels
+        self._levels = {}
+        level_nums = []
+        
+        for key, value in levels.items():
+            if not key.startswith('level'):
+                raise ValueError(f"Keys must be 'levelN', got '{key}'")
+            
+            try:
+                level_num = int(key[5:])
+            except ValueError:
+                raise ValueError(f"Invalid level key: '{key}'")
+            
+            if not isinstance(value, State):
+                raise TypeError(f"Level values must be State, got {type(value)}")
+            
+            level_nums.append(level_num)
+            self._levels[level_num] = value
+        
+        # Check contiguous levels starting from 0
+        if level_nums:
+            level_nums.sort()
+            if level_nums[0] != 0:
+                raise ValueError("Levels must start at 0")
+            for i in range(len(level_nums) - 1):
+                if level_nums[i+1] != level_nums[i] + 1:
+                    raise ValueError("Levels must be contiguous")
+        
+        self._depth = max(level_nums) if level_nums else -1
+    
+    @property
+    def depth(self) -> int:
+        """Maximum level index"""
+        return self._depth
+    
+    @property
+    def num_levels(self) -> int:
+        """Number of levels"""
+        return self._depth + 1
+    
+    @property
+    def total_bits(self) -> int:
+        """Total number of bits"""
+        return 2 * self.num_levels
+    
+    @property
+    def total_states(self) -> int:
+        """Total number of possible states"""
+        return 2 ** self.total_bits
+    
+    def get_level(self, level: int) -> State:
+        """Get state at specific level"""
+        if level not in self._levels:
+            raise IndexError(f"Level {level} does not exist")
+        return self._levels[level]
+    
+    def set_level(self, level: int, state: State):
+        """Set state at specific level"""
+        if level < 0 or level > self._depth + 1:
+            raise IndexError(f"Invalid level: {level}")
+        self._levels[level] = state
+        if level > self._depth:
+            self._depth = level
+    
+    def all_levels(self) -> List[State]:
+        """Return list of all level states"""
+        return [self._levels[i] for i in range(self.num_levels)]
+    
+    def all_psi(self) -> bool:
+        """Check if all levels are ψ"""
+        return all(s == PSI for s in self.all_levels())
+    
+    def any_empty(self) -> bool:
+        """Check if any level is ∅"""
+        return any(s == EMPTY for s in self.all_levels())
+    
+    def count_psi(self) -> int:
+        """Count number of ψ levels"""
+        return sum(1 for s in self.all_levels() if s == PSI)
+    
+    def path_string(self) -> str:
+        """
+        Return path as string
+        
+        Examples
+        --------
+        >>> state = NestedState(level0=PSI, level1=PHI, level2=DELTA)
+        >>> state.path_string()
+        'ψ.φ.δ'
+        """
+        return '.'.join(str(s) for s in self.all_levels())
+    
+    def path_matches(self, pattern: str) -> bool:
+        """
+        Check if path matches pattern
+        
+        Pattern can include wildcards (*)
+        
+        Examples
+        --------
+        >>> state = NestedState(level0=PSI, level1=PHI)
+        >>> state.path_matches("ψ.*")
+        True
+        >>> state.path_matches("*.φ")
+        True
+        """
+        pattern_parts = pattern.split('.')
+        path_parts = self.path_string().split('.')
+        
+        if len(pattern_parts) != len(path_parts):
+            return False
+        
+        for pattern_part, path_part in zip(pattern_parts, path_parts):
+            if pattern_part != '*' and pattern_part != path_part:
+                return False
+        
+        return True
+    
+    def __eq__(self, other) -> bool:
+        if isinstance(other, str):
+            return self.path_string() == other
+        elif isinstance(other, NestedState):
+            return self._levels == other._levels
+        return False
+    
+    def __str__(self) -> str:
+        return self.path_string()
+    
+    def __repr__(self) -> str:
+        levels_str = ', '.join(
+            f"level{i}={repr(s)}" 
+            for i, s in self._levels.items()
+        )
+        return f"NestedState({levels_str})"
+    
+    @classmethod
+    def from_path(cls, path: str) -> 'NestedState':
+        """
+        Create nested state from path string
+        
+        Examples
+        --------
+        >>> state = NestedState.from_path("ψ.φ.δ")
+        >>> state.depth
+        2
+        """
+        parts = path.split('.')
+        levels = {}
+        for i, part in enumerate(parts):
+            levels[f'level{i}'] = State.from_name(part)
+        return cls(**levels)
+4. parallel.py - Parallel Channels
+python"""
+Parallel channel systems (independent dimensions)
+"""
+from typing import Dict, List, Optional, Tuple
+import numpy as np
+from .state import State, StateArray
+
+
+class ParallelChannels:
+    """
+    Multiple independent channel states
+    
+    Examples
+    --------
+    >>> channels = ParallelChannels(
+    ...     technical=State(1, 1),
+    ...     business=State(1, 0),
+    ...     team=State(0, 1)
+    ... )
+    >>> channels['technical']
+    ψ
+    >>> channels.all_names()
+    ['technical', 'business', 'team']
+    """
+    
+    def __init__(self, **channels):
+        """
+        Initialize parallel channels
+        
+        Parameters
+        ----------
+        **channels : State
+            Named channel states
+        """
+        self._channels = {}
+        
+        for name, state in channels.items():
+            if not isinstance(state, State):
+                raise TypeError(f"Channel values must be State, got {type(state)}")
+            self._channels[name] = state
+    
+    def __getitem__(self, name: str) -> State:
+        """Get channel state by name"""
+        return self._channels[name]
+    
+    def __setitem__(self, name: str, state: State):
+        """Set channel state by name"""
+        if not isinstance(state, State):
+            raise TypeError(f"Value must be State, got {type(state)}")
+        self._channels[name] = state
+    
+    def __len__(self) -> int:
+        """Number of channels"""
+        return len(self._channels)
+    
+    def all_names(self) -> List[str]:
+        """List of channel names"""
+        return list(self._channels.keys())
+    
+    def all_states(self) -> List[State]:
+        """List of all states"""
+        return list(self._channels.values())
+    
+    def to_dict(self) -> Dict[str, State]:
+        """Convert to dictionary"""
+        return self._channels.copy()
+    
+    def count_psi(self) -> int:
+        """Count channels in ψ state"""
+        from .state import PSI
+        return sum(1 for s in self._channels.values() if s == PSI)
+    
+    def all_psi(self) -> bool:
+        """Check if all channels are ψ"""
+        from .state import PSI
+        return all(s == PSI for s in self._channels.values())
+    
+    def any_empty(self) -> bool:
+        """Check if any channel is ∅"""
+        from .state import EMPTY
+        return any(s == EMPTY for s in self._channels.values())
+    
+    def __str__(self) -> str:
+        parts = [f"{name}:{state}" for name, state in self._channels.items()]
+        return f"({', '.join(parts)})"
+    
+    def __repr__(self) -> str:
+        items = ', '.join(
+            f"{name}={repr(state)}" 
+            for name, state in self._channels.items()
+        )
+        return f"ParallelChannels({items})"
+
+C. Pipeline Module (channelpy.pipeline)
+1. base.py - Pipeline Base Class
+python"""
+Base pipeline architecture
+"""
+from typing import Any, Dict, List, Optional, Tuple, Callable
+from abc import ABC, abstractmethod
+import numpy as np
+from ..core.state import State, StateArray
+
+
+class BasePipeline(ABC):
+    """
+    Base class for channel pipelines
+    
+    Three-stage architecture:
+    1. Preprocess: Raw data → Features
+    2. Encode: Features → States
+    3. Interpret: States → Decisions
+    """
+    
+    def __init__(self):
+        self.preprocessors = []
+        self.encoders = []
+        self.interpreters = []
+        self.is_fitted = False
+    
+    @abstractmethod
+    def fit(self, X, y=None):
+        """
+        Fit pipeline on data
+        
+        Parameters
+        ----------
+        X : array-like
+            Input data
+        y : array-like, optional
+            Target labels
+        """
+        pass
+    
+    @abstractmethod
+    def transform(self, X):
+        """
+        Transform data through pipeline
+        
+        Parameters
+        ----------
+        X : array-like
+            Input data
+            
+        Returns
+        -------
+        decisions : array-like
+            Pipeline output
+        states : array-like
+            Intermediate states (for debugging)
+        """
+        pass
+    
+    def fit_transform(self, X, y=None):
+        """Fit and transform"""
+        self.fit(X, y)
+        return self.transform(X)
+    
+    def add_preprocessor(self, preprocessor: Callable):
+        """Add preprocessing step"""
+        self.preprocessors.append(preprocessor)
+    
+    def add_encoder(self, encoder: Callable):
+        """Add encoding step"""
+        self.encoders.append(encoder)
+    
+    def add_interpreter(self, interpreter: Callable):
+        """Add interpretation step"""
+        self.interpreters.append(interpreter)
+    
+    def _preprocess(self, X):
+        """Apply all preprocessors"""
+        result = X
+        for prep in self.preprocessors:
+            result = prep(result)
+        return result
+    
+    def _encode(self, features):
+        """Apply all encoders"""
+        states = []
+        for encoder in self.encoders:
+            state = encoder(features)
+            states.append(state)
+        return states
+    
+    def _interpret(self, states):
+        """Apply all interpreters"""
+        decisions = []
+        for interpreter in self.interpreters:
+            decision = interpreter(states)
+            decisions.append(decision)
+        return decisions
+
+
+class ChannelPipeline(BasePipeline):
+    """
+    Concrete implementation of channel pipeline
+    
+    Examples
+    --------
+    >>> pipeline = ChannelPipeline()
+    >>> pipeline.add_preprocessor(normalize)
+    >>> pipeline.add_encoder(threshold_encoder)
+    >>> pipeline.add_interpreter(rule_based_interpreter)
+    >>> pipeline.fit(train_data, train_labels)
+    >>> decisions, states = pipeline.transform(test_data)
+    """
+    
+    def fit(self, X, y=None):
+        """Fit pipeline"""
+        # Fit preprocessors
+        features = X
+        for prep in self.preprocessors:
+            if hasattr(prep, 'fit'):
+                prep.fit(features, y)
+            features = prep.transform(features) if hasattr(prep, 'transform') else prep(features)
+        
+        # Fit encoders
+        for encoder in self.encoders:
+            if hasattr(encoder, 'fit'):
+                encoder.fit(features, y)
+        
+        # Fit interpreters
+        if y is not None:
+            states = self._encode(features)
+            for interpreter in self.interpreters:
+                if hasattr(interpreter, 'fit'):
+                    interpreter.fit(states, y)
+        
+        self.is_fitted = True
+        return self
+    
+    def transform(self, X):
+        """Transform through pipeline"""
+        if not self.is_fitted:
+            raise RuntimeError("Pipeline not fitted. Call fit() first.")
+        
+        # Stage 1: Preprocess
+        features = self._preprocess(X)
+        
+        # Stage 2: Encode
+        states = self._encode(features)
+        
+        # Stage 3: Interpret
+        decisions = self._interpret(states)
+        
+        return decisions, states
+2. encoders.py - Encoding Strategies
+python"""
+Feature → State encoders
+"""
+from typing import Optional, Tuple, Callable
+import numpy as np
+from ..core.state import State, StateArray
+
+
+class ThresholdEncoder:
+    """
+    Simple threshold-based encoder
+    
+    Examples
+    --------
+    >>> encoder = ThresholdEncoder(threshold_i=0.5, threshold_q=0.75)
+    >>> encoder.encode(0.8)
+    ψ
+    >>> encoder.encode(0.3)
+    ∅
+    """
+    
+    def __init__(self, threshold_i: float = 0.5, threshold_q: float = 0.75):
+        self.threshold_i = threshold_i
+        self.threshold_q = threshold_q
+    
+    def encode(self, value: float) -> State:
+        """Encode single value"""
+        return State(
+            i=int(value > self.threshold_i),
+            q=int(value > self.threshold_q)
+        )
+    
+    def encode_array(self, values: np.ndarray) -> StateArray:
+        """Encode array of values"""
+        return StateArray(
+            i=(values > self.threshold_i).astype(np.int8),
+            q=(values > self.threshold_q).astype(np.int8)
+        )
+    
+    def __call__(self, values):
+        """Make callable"""
+        if isinstance(values, (int, float)):
+            return self.encode(values)
+        else:
+            return self.encode_array(np.asarray(values))
+
+
+class LearnedThresholdEncoder:
+    """
+    Learn optimal thresholds from data
+    
+    Examples
+    --------
+    >>> encoder = LearnedThresholdEncoder()
+    >>> encoder.fit(train_features, train_labels)
+    >>> states = encoder(test_features)
+    """
+    
+    def __init__(self, method: str = 'statistical'):
+        """
+        Parameters
+        ----------
+        method : str
+            'statistical': Use percentiles
+            'supervised': Optimize for classification
+        """
+        self.method = method
+        self.threshold_i = None
+        self.threshold_q = None
+    
+    def fit(self, X, y=None):
+        """Learn thresholds"""
+        X = np.asarray(X)
+        
+        if self.method == 'statistical':
+            self.threshold_i = np.median(X)
+            self.threshold_q = np.percentile(X, 75)
+        
+        elif self.method == 'supervised':
+            if y is None:
+                raise ValueError("Method 'supervised' requires labels")
+            
+            # Find thresholds that maximize separation
+            self.threshold_i = self._find_optimal_threshold(X, y)
+            self.threshold_q = self._find_optimal_threshold(
+                X[X > self.threshold_i], 
+                y[X > self.threshold_i]
+            ) if np.any(X > self.threshold_i) else self.threshold_i * 1.5
+        
+        return self
+    
+    def _find_optimal_threshold(self, X, y):
+        """Find threshold maximizing class separation"""
+        candidates = np.percentile(X, np.linspace(10, 90, 9))
+        best_threshold = candidates[0]
+        best_score = -np.inf
+        
+        for threshold in candidates:
+            bit_values = (X > threshold).astype(int)
+            score = np.corrcoef(bit_values, y)[0, 1]
+            if score > best_score:
+                best_score = score
+                best_threshold = threshold
+        
+        return best_threshold
+    
+    def __call__(self, X):
+        """Encode features"""
+        if self.threshold_i is None:
+            raise RuntimeError("Encoder not fitted")
+        
+        X = np.asarray(X)
+        return StateArray(
+            i=(X > self.threshold_i).astype(np.int8),
+            q=(X > self.threshold_q).astype(np.int8)
+        )
+
+
+class DualFeatureEncoder:
+    """
+    Encode from two separate features (one for i, one for q)
+    
+    Examples
+    --------
+    >>> encoder = DualFeatureEncoder()
+    >>> encoder.fit(train_features_i, train_features_q)
+    >>> states = encoder(test_features_i, test_features_q)
+    """
+    
+    def __init__(self):
+        self.encoder_i = LearnedThresholdEncoder()
+        self.encoder_q = LearnedThresholdEncoder()
+    
+    def fit(self, X_i, X_q, y=None):
+        """Fit both encoders"""
+        self.encoder_i.fit(X_i, y)
+        self.encoder_q.fit(X_q, y)
+        return self
+    
+    def __call__(self, X_i, X_q):
+        """Encode from two features"""
+        bits_i = (np.asarray(X_i) > self.encoder_i.threshold_i).astype(np.int8)
+        bits_q = (np.asarray(X_q) > self.encoder_q.threshold_q).astype(np.int8)
+        return StateArray(i=bits_i, q=bits_q)
+
+D. Adaptive Module (channelpy.adaptive)
+Key file: streaming.py
+python"""
+Streaming adaptive thresholds
+"""
+import numpy as np
+from ..core.state import State, StateArray
+
+
+class StreamingAdaptiveThreshold:
+    """
+    Online threshold adaptation for streaming data
+    
+    Examples
+    --------
+    >>> threshold = StreamingAdaptiveThreshold(window_size=1000)
+    >>> for value in stream:
+    ...     threshold.update(value)
+    ...     state = threshold.encode(value)
+    ...     process(state)
+    """
+    
+    def __init__(self, window_size: int = 1000, adaptation_rate: float = 0.01):
+        self.window_size = window_size
+        self.adaptation_rate = adaptation_rate
+        
+        # Streaming statistics (Welford's algorithm)
+        self.running_mean = 0.0
+        self.running_m2 = 0.0
+        self.n_samples = 0
+        
+        # Sliding window
+        self.window = []
+        
+        # Current thresholds
+        self.threshold_i = 0.0
+        self.threshold_q = 0.0
+    
+    def update(self, value: float):
+        """Update with new value"""
+        # Update running statistics
+        self.n_samples += 1
+        delta = value - self.running_mean
+        self.running_mean += delta / self.n_samples
+        delta2 = value - self.running_mean
+        self.running_m2 += delta * delta2
+        
+        # Update window
+        self.window.append(value)
+        if len(self.window) > self.window_size:
+            self.window.pop(0)
+        
+        # Update thresholds
+        self._update_thresholds()
+    
+    def _update_thresholds(self):
+        """Update thresholds based on statistics"""
+        if self.n_samples < 2:
+            return
+        
+        current_std = np.sqrt(self.running_m2 / (self.n_samples - 1))
+        
+        # Target thresholds
+        target_i = self.running_mean
+        target_q = self.running_mean + 0.5 * current_std
+        
+        # Smooth update (EMA)
+        self.threshold_i = (
+            (1 - self.adaptation_rate) * self.threshold_i +
+            self.adaptation_rate * target_i
+        )
+        self.threshold_q = (
+            (1 - self.adaptation_rate) * self.threshold_q +
+            self.adaptation_rate * target_q
+        )
+    
+    def encode(self, value: float) -> State:
+        """Encode value with current thresholds"""
+        return State(
+            i=int(value > self.threshold_i),
+            q=int(value > self.threshold_q)
+        )
+    
+    def get_stats(self) -> dict:
+        """Get current statistics"""
+        return {
+            'mean': self.running_mean,
+            'std': np.sqrt(self.running_m2 / max(self.n_samples - 1, 1)),
+            'n_samples': self.n_samples,
+            'threshold_i': self.threshold_i,
+            'threshold_q': self.threshold_q
+        }
+
+E. Visualization Module (channelpy.visualization)
+python"""
+Visualization utilities
+"""
+import matplotlib.pyplot as plt
+import numpy as np
+from ..core.state import State, StateArray, EMPTY, DELTA, PHI, PSI
+
+
+def plot_states(states: StateArray, title: str = "Channel States"):
+    """
+    Plot state sequence
+    
+    Examples
+    --------
+    >>> states = StateArray.from_bits(i=[1,0,1,1], q=[1,1,0,1])
+    >>> plot_states(states)
+    """
+    fig, ax = plt.subplots(figsize=(12, 4))
+    
+    # Convert to integers for plotting
+    state_ints = states.to_ints()
+    
+    # Plot as steps
+    ax.step(range(len(states)), state_ints, where='post', linewidth=2)
+    ax.set_yticks([0, 1, 2, 3])
+    ax.set_yticklabels(['∅', 'φ', 'δ', 'ψ'])
+    ax.set_xlabel('Time')
+    ax.set_ylabel('State')
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    
+    # Color regions
+    colors = ['lightgray', 'lightblue', 'lightyellow', 'lightgreen']
+    for i in range(4):
+        mask = state_ints == i
+        if np.any(mask):
+            ax.axhspan(i-0.5, i+0.5, alpha=0.3, color=colors[i])
+    
+    return fig, ax
+
+
+def plot_state_distribution(states: StateArray, title: str = "State Distribution"):
+    """
+    Plot distribution of states
+    
+    Examples
+    --------
+    >>> states = StateArray.from_bits(i=np.random.randint(0,2,100),
+    ...                                q=np.random.randint(0,2,100))
+    >>> plot_state_distribution(states)
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    counts = states.count_by_state()
+    
+    labels = ['∅', 'δ', 'φ', 'ψ']
+    values = [counts[s] for s in [EMPTY, DELTA, PHI, PSI]]
+    colors = ['lightgray', 'lightyellow', 'lightblue', 'lightgreen']
+    
+    ax.bar(labels, values, color=colors, edgecolor='black')
+    ax.set_ylabel('Count')
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Add percentages
+    total = sum(values)
+    for i, (label, value) in enumerate(zip(labels, values)):
+        pct = 100 * value / total
+        ax.text(i, value, f'{pct:.1f}%', ha='center', va='bottom')
+    
+    return fig, ax
+
+
+def plot_threshold_adaptation(values, thresholds_i, thresholds_q,
+                              title="Adaptive Thresholds"):
+    """
+    Plot values with adaptive thresholds
+    
+    Examples
+    --------
+    >>> values = np.random.randn(1000)
+    >>> threshold = StreamingAdaptiveThreshold()
+    >>> thresholds_i, thresholds_q = [], []
+    >>> for v in values:
+    ...     threshold.update(v)
+    ...     thresholds_i.append(threshold.threshold_i)
+    ...     thresholds_q.append(threshold.threshold_q)
+    >>> plot_threshold_adaptation(values, thresholds_i, thresholds_q)
+    """
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    ax.plot(values, alpha=0.5, label='Values', linewidth=0.5)
+    ax.plot(thresholds_i, label='Threshold i', linewidth=2, color='orange')
+    ax.plot(thresholds_q, label='Threshold q', linewidth=2, color='red')
+    
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Value')
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    return fig, ax
+
+F. Applications Module
+Example: trading.py
+python"""
+Trading-specific channel implementations
+"""
+import numpy as np
+import pandas as pd
+from ..pipeline.base import ChannelPipeline
+from ..pipeline.encoders import DualFeatureEncoder
+from ..adaptive.streaming import StreamingAdaptiveThreshold
+
+
+class TradingChannelSystem:
+    """
+    Complete trading system using channel algebra
+    
+    Examples
+    --------
+    >>> system = TradingChannelSystem()
+    >>> system.fit(historical_prices)
+    >>> for price, volume in stream:
+    ...     signal = system.process_tick(price, volume)
+    ...     if signal['action'] == 'BUY':
+    ...         execute_trade(signal)
+    """
+    
+    def __init__(self):
+        self.price_threshold = StreamingAdaptiveThreshold(window_size=500)
+        self.volume_threshold = StreamingAdaptiveThreshold(window_size=500)
+        self.pipeline = ChannelPipeline()
+    
+    def fit(self, prices: pd.Series, volumes: pd.Series):
+        """Initialize with historical data"""
+        for price, volume in zip(prices, volumes):
+            self.price_threshold.update(price)
+            self.volume_threshold.update(volume)
+        return self
+    
+    def process_tick(self, price: float, volume: float) -> dict:
+        """Process new market tick"""
+        # Update thresholds
+        self.price_threshold.update(price)
+        self.volume_threshold.update(volume)
+        
+        # Encode
+        price_state = self.price_threshold.encode(price)
+        volume_state = self.volume_threshold.encode(volume)
+        
+        # Interpret
+        return self._interpret_states(price_state, volume_state)
+    
+    def _interpret_states(self, price_state, volume_state):
+        """Trading rules"""
+        from ..core.state import PSI, DELTA, PHI, EMPTY
+        
+        if price_state == PSI and volume_state == PSI:
+            return {'action': 'BUY', 'confidence': 1.0}
+        elif price_state == PSI and volume_state in [DELTA, PHI]:
+            return {'action': 'BUY', 'confidence': 0.7}
+        elif price_state == EMPTY and volume_state == PSI:
+            return {'action': 'SELL', 'confidence': 1.0}
+        else:
+            return {'action': 'HOLD', 'confidence': 0.5}
+```
+
+---
+
+### G. Testing Structure
+```
+tests/
+├── test_core/
+│   ├── test_state.py
+│   ├── test_operations.py
+│   ├── test_nested.py
+│   └── test_parallel.py
+├── test_pipeline/
+│   ├── test_base.py
+│   ├── test_encoders.py
+│   └── test_interpreters.py
+├── test_adaptive/
+│   ├── test_streaming.py
+│   └── test_thresholds.py
+├── test_topology/
+│   ├── test_betti.py
+│   └── test_persistence.py
+└── test_applications/
+    ├── test_trading.py
+    └── test_medical.py
+Example Test: test_core/test_state.py
+python"""
+Tests for core.state module
+"""
+import pytest
+import numpy as np
+from channelpy.core.state import State, StateArray, EMPTY, DELTA, PHI, PSI
+
+
+def test_state_creation():
+    """Test basic state creation"""
+    state = State(1, 1)
+    assert state.i == 1
+    assert state.q == 1
+    assert state == PSI
+
+
+def test_state_equality():
+    """Test state equality"""
+    assert State(1, 1) == PSI
+    assert State(0, 0) == EMPTY
+    assert State(1, 0) != State(0, 1)
+
+
+def test_state_string_representation():
+    """Test string conversion"""
+    assert str(EMPTY) == '∅'
+    assert str(DELTA) == 'δ'
+    assert str(PHI) == 'φ'
+    assert str(PSI) == 'ψ'
+
+
+def test_state_from_name():
+    """Test creating state from name"""
+    assert State.from_name('psi') == PSI
+    assert State.from_name('ψ') == PSI
+    assert State.from_name('empty') == EMPTY
+
+
+def test_state_array_creation():
+    """Test StateArray creation"""
+    states = StateArray.from_bits(i=[1, 0, 1], q=[1, 1, 0])
+    assert len(states) == 3
+    assert states[0] == PSI
+    assert states[1] == PHI
+    assert states[2] == DELTA
+
+
+def test_state_array_count():
+    """Test state counting"""
+    states = StateArray.from_bits(
+        i=[1, 0, 1, 1, 0],
+        q=[1, 1, 0, 1, 0]
+    )
+    counts = states.count_by_state()
+    assert counts[PSI] == 2
+    assert counts[PHI] == 1
+    assert counts[DELTA] == 1
+    assert counts[EMPTY] == 1
+
+
+def test_state_invalid_bits():
+    """Test validation of bit values"""
+    with pytest.raises(ValueError):
+        State(2, 0)  # Invalid i
+    with pytest.raises(ValueError):
+        State(0, -1)  # Invalid q
+```
+
+---
+
+### H. Documentation Structure
+```
+docs/
+├── index.md                    # Main documentation
+├── quickstart.md              # Getting started guide
+├── user_guide/
+│   ├── core_concepts.md       # Channel algebra basics
+│   ├── pipelines.md           # Building pipelines
+│   ├── adaptive.md            # Adaptive thresholds
+│   └── applications.md        # Domain applications
+├── api_reference/
+│   ├── core.md                # Core API
+│   ├── pipeline.md            # Pipeline API
+│   ├── adaptive.md            # Adaptive API
+│   └── visualization.md       # Visualization API
+├── examples/
+│   ├── trading_example.ipynb
+│   ├── medical_example.ipynb
+│   └── signal_processing.ipynb
+└── theory/
+    ├── topology.md            # Topological foundations
+    ├── combinators.md         # Combinator calculus
+    └── mathematics.md         # Full mathematical theory
+
+I. Package Configuration
+setup.py
+pythonfrom setuptools import setup, find_packages
+
+setup(
+    name="channelpy",
+    version="0.1.0",
+    description="Channel Algebra for Structured Data Analysis",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    author="Channel Algebra Team",
+    author_email="contact@channelalgebra.org",
+    url="https://github.com/channelalgebra/channelpy",
+    packages=find_packages(exclude=["tests", "docs"]),
+    install_requires=[
+        "numpy>=1.20.0",
+        "scipy>=1.7.0",
+        "matplotlib>=3.3.0",
+        "pandas>=1.3.0",
+        "scikit-learn>=0.24.0",
+        "ripser>=0.6.0",  # For persistent homology
+        "persim>=0.3.0",  # For persistence diagrams
+    ],
+    extras_require={
+        "dev": [
+            "pytest>=6.0",
+            "pytest-cov>=2.10",
+            "black>=21.0",
+            "flake8>=3.9",
+            "mypy>=0.900",
+            "sphinx>=4.0",
+            "sphinx-rtd-theme>=0.5",
+        ],
+        "viz": [
+            "seaborn>=0.11.0",
+            "plotly>=5.0.0",
+        ],
+        "applications": [
+            "yfinance>=0.1.60",  # For trading examples
+            "ta>=0.7.0",  # Technical analysis
+        ],
+    },
+    python_requires=">=3.8",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Science/Research",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Scientific/Engineering :: Mathematics",
+    ],
+)
+pyproject.toml
+toml[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=channelpy --cov-report=html --cov-report=term"
+
+J. Quick Start Example
+README.md (excerpt)
+markdown# ChannelPy: Channel Algebra for Python
+
+## Installation
+```bash
+pip install channelpy
+```
+
+## Quick Start
+```python
+from channelpy import State, gate, admit, ChannelPipeline
+from channelpy.adaptive import StreamingAdaptiveThreshold
+
+# Create states
+state1 = State(i=1, q=0)  # δ (puncture)
+state2 = State(i=1, q=1)  # ψ (resonant)
+
+# Apply operations
+validated = admit(state1)  # δ → ψ
+cleaned = gate(state1)     # δ → ∅
+
+# Build a pipeline
+pipeline = ChannelPipeline()
+pipeline.add_preprocessor(normalize)
+pipeline.add_encoder(threshold_encoder)
+pipeline.add_interpreter(rule_based)
+
+# Fit and use
+pipeline.fit(train_data, train_labels)
+decisions, states = pipeline.transform(test_data)
+
+# Adaptive thresholds
+threshold = StreamingAdaptiveThreshold()
+for value in data_stream:
+    threshold.update(value)
+    state = threshold.encode(value)
+    print(f"Value: {value:.2f}, State: {state}, Thresholds: {threshold.get_stats()}")
+```
+
+## Examples
+
+- [Trading System](examples/trading_example.ipynb)
+- [Medical Diagnosis](examples/medical_example.ipynb)
+- [Signal Processing](examples/signal_processing.ipynb)
+
+## Documentation
+
+Full documentation at [https://channelpy.readthedocs.io](https://channelpy.readthedocs.io)
+
+K. Implementation Roadmap
+Phase 1: Core (Weeks 1-2)
+
+✓ State class
+✓ Basic operations
+✓ StateArray for efficiency
+✓ Basic tests
+
+Phase 2: Structure (Weeks 3-4)
+
+✓ Nested states
+✓ Parallel channels
+✓ Lattice operations
+
+Phase 3: Pipelines (Weeks 5-6)
+
+✓ Base pipeline architecture
+✓ Preprocessors
+✓ Encoders (threshold, learned)
+✓ Interpreters (rules, FSM)
+
+Phase 4: Adaptive (Weeks 7-8)
+
+✓ Streaming thresholds
+✓ Topology-aware adaptation
+✓ Multi-scale tracking
+
+Phase 5: Advanced (Weeks 9-10)
+
+✓ Topological features
+✓ Persistent homology
+✓ Combinator calculus
+
+Phase 6: Applications (Weeks 11-12)
+
+✓ Trading system
+✓ Medical diagnosis
+✓ Signal processing
+✓ Example notebooks
+
+Phase 7: Polish (Weeks 13-14)
+
+✓ Full documentation
+✓ Tutorial notebooks
+✓ Performance optimization
+✓ Package release
+
+
+L. Summary: Why This Architecture Works
+Design Principles:
+
+Separation of Concerns
+
+Core: Pure math
+Pipeline: Data processing
+Adaptive: Real-world robustness
+Applications: Domain specifics
+
+
+Progressive Complexity
+
+Start simple (State, operations)
+Add structure (nested, parallel)
+Add intelligence (adaptive)
+Add theory (topology, combinators)
+
+
+Multiple Entry Points
+
+Quick start: Just use State and operations
+Intermediate: Build pipelines
+Advanced: Adaptive thresholds, topology
+Research: Full mathematical framework
+
+
+Practical Focus
+
+Every feature has example
+Every concept has test
+Every module has documentation
+Every application has notebook
+
+
+Extensibility
+
+Easy to add custom encoders
+Easy to add custom interpreters
+Easy to add new applications
+Easy to extend theory
+
+
+
+The Vision:
+
+Make channel algebra as accessible as scikit-learn
+Make structured thinking as common as deep learning
+Make interpretability the default, not an afterthought
+
+This library makes it possible.
