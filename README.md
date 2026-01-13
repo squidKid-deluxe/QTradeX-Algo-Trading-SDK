@@ -22,58 +22,61 @@
 
 ---
 
-## ⚡️ TL;DR
+## TL;DR
 **QTradeX** is a lightning-fast Python framework for designing, backtesting, and deploying algorithmic trading bots, built for **crypto markets** with support for **100+ exchanges**, **AI-driven optimization**, and **blazing-fast vectorized execution**.
 
 Like what we're doing?  Give us a ⭐!
 
 ---
 
-## 🎯 Why QTradeX?
+## Why QTradeX?
 
 Whether you're exploring a simple EMA crossover or engineering a strategy with 20+ indicators and genetic optimization, QTradeX gives you:
 
-✅ Modular Architecture  
-✅ Tulip + CCXT Integration  
-✅ Custom Bot Classes  
-✅ Fast, Disk-Cached Market Data  
-✅ Near-Instant Backtests (even on Raspberry Pi!)
+- Modular, non-locked architecture - want to use QTradeX's data fetching with a custom backtest engine?  Go for it!
+- Tulip + CCXT Integration  
+- Custom Bot Classes  
+- Fast, Disk-Cached Market Data  
+- Ultra Fast Backtests (even on a Raspberry Pi!)
 
 ---
 
 ## 🔍 Features at a Glance
 
-- 🧠 **Bot Development**: Extend `BaseBot` to craft custom strategies
-- 🔁 **Backtesting**: Plug-and-play CLI & code-based testing
-- 🧬 **Optimization**: Use QPSO or LSGA to fine-tune parameters
-- 📊 **Indicators**: Wrapped Tulip indicators for blazing performance
-- 🌐 **Data Sources**: Pull candles from 100+ CEXs/DEXs with CCXT
-- 📈 **Performance Metrics**: Evaluate bots with ROI, Sortino, Win Rate
-- 🤖 **Speed**: Up to 50+ backtests/sec on low-end hardware
+- **Bot Development**: Extend `BaseBot` to craft custom strategies
+- **Backtesting**: Easy-to-navigate CLI & live-coding based testing platform (Just select `Autobacktest`)
+- **Optimization**: Use QPSO, LSGA, or others to fine-tune parameters
+- **Indicators**: Wrapped Tulip indicators for blazing performance
+- **Data Sources**: Pull candles from 100+ CEXs/DEXs with CCXT
+- **Performance Metrics**: Evaluate bots with ROI, Sortino, Win Rate, and dozens more
+- **Speed**: 200+ backtests per second for 3 years of daily candles on a Ryzen 5600x
 
 ---
 
-## ⚙️ Project Structure
+## Project Structure
 
 ```
-
 qtradex/
 ├── core/             # Bot logic and backtesting
 ├── indicators/       # Technical indicators
-├── optimizers/       # QPSO and LSGA
+├── optimizers/       # QPSO, LSGA, other optimizers, and common utilities
 ├── plot/             # Trade/metric visualization
 ├── private/          # Execution & paper wallets
 ├── public/           # Data feeds and utils
-├── common/           # JSON RPC, BitShares nodes
-└── setup.py          # Install script
-
+└── common/           # JSON RPC, BitShares nodes, and data caching
 ```
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### Install
+
+```bash
+pip install qtradex
+```
+
+Or, if you want the latest updates:
 
 ```bash
 git clone https://github.com/squidKid-deluxe/QTradeX-Algo-Trading-SDK.git QTradeX
@@ -83,7 +86,7 @@ pip install -e .
 
 ---
 
-## 🧪 Example Bot: EMA Crossover
+## Example Bot: EMA Crossover
 
 ```python
 import qtradex as qx
@@ -92,7 +95,21 @@ import numpy as np
 
 class EMACrossBot(qx.BaseBot):
     def __init__(self):
-        self.tune = {"fast_ema": 10, "slow_ema": 50}
+        # Notes:
+        # - If you make the tune values integers, the optimizers
+        #   will quantize them to the nearest integer.
+        # - By putting `_period` at the end of a tune value,
+        #   QTradeX core will assume they are periods in days and will scale them
+        #   to different candle sizes if the data given isn't daily
+        self.tune = {
+            "fast_ema_period": 10.0,
+            "slow_ema_period": 50.0
+        }
+        self.clamps = [
+            # min, max
+            [5,   50 ], # fast_ema
+            [20,  100], # slow_ema
+        ]
 
     def indicators(self, data):
         return {
@@ -107,7 +124,7 @@ class EMACrossBot(qx.BaseBot):
             return qx.Buy()
         elif fast < slow:
             return qx.Sell()
-        return qx.Thresholds(buying=0.5 * fast, selling=2 * fast)
+        return qx.Thresholds(buying=fast * 0.8, selling=fast * 1.2)
 
     def plot(self, *args):
         qx.plot(
@@ -133,35 +150,39 @@ bot = EMACrossBot()
 qx.dispatch(bot, data)
 ```
 
-🔗 See more bots in [QTradeX AI Agents](https://github.com/squidKid-deluxe/QTradeX-AI-Agents)
+See more bots in [QTradeX AI Agents](https://github.com/squidKid-deluxe/QTradeX-AI-Agents)
 
 ---
 
-## 🚦 Usage Guide
+## Usage Guide
 
 | Step | What to Do                                                      |
 | ---- | --------------------------------------------------------------- |
 | 1️⃣  | Build a bot with custom logic by subclassing `BaseBot`          |
 | 2️⃣  | Backtest using `qx.core.dispatch` + historical data             |
-| 3️⃣  | Optimize with `qpso.py` or `lsga.py` (tunes stored in `/tunes`) |
+| 3️⃣  | Optimize with any algorithm you like (optmized tunes stored in `/tunes`) |
 | 4️⃣  | Deploy live                                                     |
 
 ---
 
-## 🧭 Roadmap
+## Roadmap
 
-* 📈 More indicators (non-Tulip sources)
-* 🏦 TradFi Connectors: Stocks, Forex, and Comex support
+* More indicators (non-Tulip sources)
+* GPU Acceleration for indicators
+* Improved multi-core support for optimization
+* Windows/Mac support
+* TradFi Connectors: Stocks, Forex, and Comex support
 
 Want to help out?  Check out the [Issues](https://github.com/squidKid-deluxe/QTradeX-Algo-Trading-SDK/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) list for forseeable improvements and bugs.
 
 ---
 
-## 📚 Resources
+## Resources
 
-* 🧠 [QTradeX Algo Trading Strategies](https://github.com/squidKid-deluxe/qtradex-ai-agents)
-* 📘 [Tulipy Docs](https://tulipindicators.org)
-* 🌍 [CCXT Docs](https://docs.ccxt.com)
+* [QTradeX Telegram](https://t.me/qtradex_sdk)
+* [QTradeX Algo Trading Strategies](https://github.com/squidKid-deluxe/qtradex-ai-agents)
+* [Tulipy Docs](https://tulipindicators.org)
+* [CCXT Docs](https://docs.ccxt.com)
 
 ---
 
