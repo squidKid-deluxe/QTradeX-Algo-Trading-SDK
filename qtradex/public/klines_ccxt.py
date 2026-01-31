@@ -167,7 +167,7 @@ def candles(api, start, interval, limit):
                     [unformat_timeframe(i) for i in exchange.timeframes.keys()],
                 )
             page = exchange.fetch_ohlcv(
-                symbol=api["pair"], timeframe=timeframe, since=start * 1000, limit=limit
+                symbol=api["pair"], timeframe=timeframe, since=int(start * 1000), limit=limit
             )
             return [
                 {

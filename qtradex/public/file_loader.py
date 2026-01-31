@@ -7,7 +7,9 @@ import numpy as np
 from qtradex.common.utilities import (PATH, json_ipc, parse_date, read_file,
                                       write_file)
 from qtradex.public.data import Data
-from qtradex.public.utilities import clip_to_time_range
+from qtradex.public.utilities import clip_to_time_range, reaggregate
+import time
+import csv
 
 DETAIL = True
 
@@ -102,11 +104,11 @@ def load_fresh_data(
     keys=("unix", "price", "volume"),
 ) -> Data:
     if stride is None:
-        stride = candle_size  # Default to non-overlapping candles
+        stride = candle_size
     else:
         hold_stride = stride
         hold_candle_size = candle_size
-        candle_size = stride  # Default to non-overlapping candles
+        candle_size = stride
 
     keydxes = {key: keys.index(key) for key in keys}
 
@@ -292,7 +294,7 @@ def ranges_overlap(range1: list, range2: list) -> bool:
 
 # Example usage:
 if __name__ == "__main__":
-    data = retrieve_and_cache_csv_candles(
+    data = load_csv(
         exchange="kraken",
         asset="BTC",
         currency="USD",
