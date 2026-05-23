@@ -29,6 +29,8 @@ def plotmotion(block):
 
 def plot_indicators(axes, timestamps, states, indicators, indicator_fmt):
     textdxes = []
+    if not indicators:
+        return
     for key, name, color, idx, title in indicator_fmt:
         ax = axes[idx]
         if idx and idx not in textdxes:

@@ -194,9 +194,13 @@ def backtest(
     indicators = bot.indicators(data)
 
     # Ensure all indicators are of the same length
-    minlen = min(map(len, indicators.values()))
-    indicators = {k: v[-minlen:] for k, v in indicators.items()}
-    indicated_data = {"indicators": rotate(indicators)}
+    if indicators:
+        minlen = min(map(len, indicators.values()))
+        indicators = {k: v[-minlen:] for k, v in indicators.items()}
+        indicated_data = {"indicators": rotate(indicators)}
+    else:
+        minlen = min(map(len, data.values()))
+        indicated_data = {"indicators": [None for _ in range(minlen)]}
     indicated_data.update({k: v[-minlen:] for k, v in data.items()})
     last_trade = None
 

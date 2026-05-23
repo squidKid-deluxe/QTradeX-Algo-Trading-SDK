@@ -9,18 +9,25 @@ import numpy as np
 from qtradex.common.json_ipc import json_ipc
 from qtradex.common.utilities import it
 from qtradex.core.quant import filter_glitches
-from qtradex.public.klines_alphavantage import (klines_alphavantage_crypto,
-                                                klines_alphavantage_forex,
-                                                klines_alphavantage_stocks)
+from qtradex.public.klines_alphavantage import (
+    klines_alphavantage_crypto,
+    klines_alphavantage_forex,
+    klines_alphavantage_stocks,
+)
 from qtradex.public.klines_bitshares import klines_bitshares
 from qtradex.public.klines_ccxt import BadTimeframeError, klines_ccxt
 from qtradex.public.klines_cryptocompare import klines_cryptocompare
 from qtradex.public.klines_fdr import klines_fdr
 from qtradex.public.klines_synthetic import klines_synthetic
 from qtradex.public.klines_yahoo import klines_yahoo
-from qtradex.public.utilities import (clip_to_time_range, implied, invert,
-                                      merge_candles, quantize_unix,
-                                      reaggregate)
+from qtradex.public.utilities import (
+    clip_to_time_range,
+    implied,
+    invert,
+    merge_candles,
+    quantize_unix,
+    reaggregate,
+)
 
 DETAIL = False
 
@@ -73,7 +80,7 @@ class Data:
             # Default to now
             self.end = int(time.time())
 
-        self.days = (self.end-self.begin)/86400
+        self.days = (self.end - self.begin) / 86400
 
         # Add constants to self space
         self.exchange = exchange
@@ -103,14 +110,23 @@ class Data:
             else:
                 if DETAIL:
                     print(f"Using {intermediary} to create implied price...")
-                self.raw_candles = implied(
-                    self.retrieve_and_cache_candles(
-                        self.candle_size, self.asset, self.intermediary
-                    ),
-                    self.retrieve_and_cache_candles(
-                        self.candle_size, self.intermediary, self.currency
-                    ),
-                )
+                try:
+                    self.raw_candles = implied(
+                        self.retrieve_and_cache_candles(
+                            self.candle_size, self.asset, self.intermediary
+                        ),
+                        self.retrieve_and_cache_candles(
+                            self.candle_size, self.intermediary, self.currency
+                        ),
+                    )
+                except Exception as e:
+                    if DETAIL:
+                        print(
+                            f"Intermediary chain failed: {e}, falling back to direct pair..."
+                        )
+                    self.raw_candles = self.retrieve_and_cache_candles(
+                        self.candle_size, self.asset, self.currency
+                    )
 
             if np.any(self.raw_candles["unix"]):
                 self.raw_candles["unix"] = quantize_unix(
@@ -238,6 +254,13 @@ class Data:
                 #      The difficulty is only filling that gap when it is actually
                 #      asked for.
                 erase_cache = True
+                # Remove old cache files and index entries to prevent stale data
+                try:
+                    os.remove(f"{index_key} candles.json")
+                except FileNotFoundError:
+                    pass
+                index.pop(index_key, None)
+                min_time.pop(index_key, None)
 
             # within the range of what we need
             elif time_range[0] > self.begin and time_range[1] < self.end:
@@ -246,21 +269,21 @@ class Data:
                     [self.begin, time_range[0] + candle_size],
                     [time_range[1] - candle_size, self.end],
                 ]
-                use_cache = True # time_range[:]
+                use_cache = True  # time_range[:]
 
             # covers the end of what we need but not the beginning
             elif time_range[0] > self.begin and time_range[1] >= self.end:
                 gather = [[self.begin, time_range[0] + candle_size]]
-                use_cache = True # [time_range[0], self.end]
+                use_cache = True  # [time_range[0], self.end]
 
             # covers the beginning of what we need but not the end
             elif time_range[0] <= self.begin and time_range[1] < self.end:
                 gather = [[time_range[1] - candle_size, self.end]]
-                use_cache = True # [self.begin, time_range[1]]
+                use_cache = True  # [self.begin, time_range[1]]
 
             # all of what we need and potentially more
             elif time_range[0] <= self.begin and time_range[1] >= self.end:
-                use_cache = True # [self.begin, self.end]
+                use_cache = True  # [self.begin, self.end]
 
             else:
                 raise RuntimeError(
@@ -288,15 +311,20 @@ class Data:
                             min_time[index_key] = float(
                                 max(min_time.get(index_key, 0), mindata)
                             )
-            if use_cache is not None:
-                data.append(
-                    {
-                        k: np.array(v)
-                        for k, v in json_ipc(f"{index_key} candles.json").items()
-                    }
-                )
-                if inverted:
-                    data[-1] = invert(data[-1])
+            if use_cache:
+                try:
+                    cached_data = json_ipc(f"{index_key} candles.json")
+                    data.append({k: np.array(v) for k, v in cached_data.items()})
+                    if inverted:
+                        data[-1] = invert(data[-1])
+                except FileNotFoundError:
+                    # Cache file was deleted or missing, skip using cache
+                    pass
+                except (json.JSONDecodeError, TypeError) as e:
+                    # Cache file is corrupted, skip using cache
+                    if DETAIL:
+                        print(f"Cache file corrupted: {e}, fetching fresh data...")
+                    pass
 
             candles = dict()
             if len(data) > 1:
@@ -328,10 +356,10 @@ class Data:
         # find the actual start and end of the cached data
         try:
             total_time = [min(cache["unix"]), max(cache["unix"])]
-        except:
+        except (KeyError, ValueError, TypeError) as e:
             raise TimeoutError(
                 f"{self.exchange} does not provide data for this time range."
-            )
+            ) from e
         # cache it
         json_ipc(f"{index_key} candles.json", json.dumps(cache))
 
