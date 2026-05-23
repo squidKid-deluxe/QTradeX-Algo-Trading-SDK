@@ -1,84 +1,71 @@
-# This workflow will upload a Python Package to PyPI when a release is created
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Upload Python Package
+# Release + PyPI publish workflow
+name: Publish release
 
 on:
   release:
     types: [published]
 
-permissions:
-  contents: read
-
 jobs:
   release-build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Set project version from release title
-        env:
-          VERSION: ${{ github.event.release.name }}
-        run: |
-          python - <<'PY'
-          import os, re, sys
-          v = os.environ.get("VERSION","").strip()
-          if not v:
-              print("ERROR: release name is empty; cannot set version.")
-              sys.exit(1)
-          v_escaped = v.replace('"', '\\"')
-          path = "setup.py"
-          try:
-              s = open(path, "r", encoding="utf-8").read()
-          except FileNotFoundError:
-              print(f"ERROR: {path} not found.")
-              sys.exit(1)
-          def replace_in_setup(text, new_version):
-              m = re.search(r'\bsetup\s*\(\s*', text)
-              if not m:
-                  return None
-              start = m.end()
-              idx, depth = start, 1
-              while idx < len(text):
-                  c = text[idx]
-                  if c == '(': depth += 1
-                  elif c == ')':
-                      depth -= 1
-                      if depth == 0:
-                          end = idx
-                          break
-                  idx += 1
-              else:
-                  return None
-              setup_block = text[start:end]
-              if re.search(r'\bversion\s*=', setup_block):
-                  setup_block_new = re.sub(r'(^\s*version\s*=\s*([^\n,)]*)(,?)\s*)', f'    version="{new_version}",\n', setup_block, flags=re.M)
-                  return text[:start] + setup_block_new + text[end:]
-              else:
-                  return text[:start] + f'\n    version="{new_version}",' + text[start:]
-          new_s = replace_in_setup(s, v_escaped)
-          if new_s is None:
-              if re.search(r'^\s*version\s*=', s, flags=re.M):
-                  new_s = re.sub(r'^\s*version\s*=.*$', f'version = "{v_escaped}"', s, flags=re.M)
-              else:
-                  new_s = f'version = "{v_escaped}"\n' + s
-          open(path, "w", encoding="utf-8").write(new_s)
-          print("Set setup.py version to:", v)
-          PY
-
-      - name: Build wheels with cibuildwheel
-        uses: pypa/cibuildwheel@v2.20.0  # or latest
-        env:
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-* cp313-*  # include 3.13
-          CIBW_ARCHS_LINUX: x86_64
-          CIBW_SKIP: "*-win32 *-musllinux_*"  # optional: skip unsupported
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          output-dir: dist/
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip setuptools wheel build
+
+      - name: Set pyproject.toml version from release tag
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          v="${RELEASE_TAG:-${GITHUB_REF#refs/tags/}}"
+          if [ -z "$v" ]; then
+            # Try release payload
+            v="${{ github.event.release.tag_name }}"
+          fi
+          if [ -z "$v" ]; then
+            echo "ERROR: cannot determine release tag/version"
+            exit 1
+          fi
+          echo "Setting pyproject.toml version to: $v"
+          python - "$v" <<'PY'
+          import sys
+          v = sys.argv[1]
+          p = "pyproject.toml"
+          out = []
+          in_project = False
+          replaced = False
+          with open(p, "r", encoding="utf-8") as f:
+              for line in f:
+                  stripped = line.strip()
+                  if stripped.startswith("["):
+                      in_project = (stripped == "[project]")
+                      out.append(line)
+                      continue
+                  if in_project and (not replaced) and stripped.startswith("version"):
+                      out.append(f'version = "{v}"\n')
+                      replaced = True
+                      # keep in_project=False if you only want to replace the first version entry
+                  else:
+                      out.append(line)
+          with open(p, "w", encoding="utf-8") as f:
+              f.writelines(out)
+          PY
+          echo "pyproject.toml updated"
+
+      - name: Build wheel
+        run: python -m build --wheel --outdir dist
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
@@ -91,11 +78,9 @@ jobs:
     needs:
       - release-build
     permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
+      # required for protected environments, token exchange, etc.
       id-token: write
 
-    # Dedicated environments with protections for publishing are strongly recommended.
-    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
     environment:
       name: pypi
       url: https://pypi.org/project/QTradeX/${{ github.event.release.name }}
@@ -109,5 +94,7 @@ jobs:
 
       - name: Publish release distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         with:
           packages-dir: dist/
