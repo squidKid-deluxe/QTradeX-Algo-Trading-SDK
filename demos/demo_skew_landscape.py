@@ -1,4 +1,4 @@
-"""Demo: 1D sinusoidal landscape evolving under LSGA with skew memory."""
+"""Demo: 1D noise landscape evolving under LSGA with skew memory."""
 
 import os
 import matplotlib.animation as animation
@@ -6,6 +6,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import qtradex as qx
+
+SEED = 42
+KNOTS = 30
+
+_rng = np.random.RandomState(SEED)
+_knot_x = np.linspace(0, 1, KNOTS)
+_knot_y = _rng.uniform(-1, 1, KNOTS)
+
+
+def _noise_landscape(xs):
+    return np.interp(xs, _knot_x, _knot_y)
 
 
 def _fake_backtest(
@@ -20,7 +31,7 @@ def _fake_backtest(
         n = max(2, int(data.days * 86400 / data.candle_size))
         unix = np.linspace(data.begin + data.candle_size, data.end, n)
         close = np.full(n, 100.0)
-        growth = np.sin(2 * np.pi * x) * 0.5
+        growth = _noise_landscape(np.array([x]))[0] * 0.5
         balances = [
             {data.asset: 1.0 + growth * i / (n - 1), data.currency: 0.0}
             for i in range(n)
@@ -45,7 +56,7 @@ from qtradex.core.base_bot import BaseBot
 from qtradex.private.wallet import PaperWallet
 
 
-class SinBot(BaseBot):
+class NoiseBot(BaseBot):
     def __init__(self):
         self.tune = {"x": np.float64(0.5)}
         self.clamps = {"x": [0.0, 0.5, 1.0, 1]}
@@ -58,7 +69,7 @@ class SinBot(BaseBot):
 
     def fitness(self, states, raw_states, asset, currency):
         x = float(self.tune.get("x", 0.5))
-        return ["roi"], {"roi": float(np.sin(2 * np.pi * x))}
+        return ["roi"], {"roi": float(_noise_landscape(np.array([x]))[0])}
 
     def reset(self):
         pass
@@ -91,7 +102,7 @@ snapshots = []  # list of (xs, raw, eff, memory_copy)
 
 def capture(sigma):
     xs = np.linspace(0, 1, 500)
-    raw = np.sin(2 * np.pi * xs)
+    raw = _noise_landscape(xs)
     eff = raw.astype(float).copy()
     for i, x in enumerate(xs):
         cand = np.array([x])
@@ -122,7 +133,7 @@ if __name__ == "__main__":
 
     capture(sigma)
 
-    bot = SinBot()
+    bot = NoiseBot()
     opt = lsga_mod.LSGAoptions()
     opt.population = 15
     opt.offspring = 5
