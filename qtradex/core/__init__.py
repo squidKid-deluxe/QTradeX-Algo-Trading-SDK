@@ -5,4 +5,5 @@ from qtradex.core.base_bot import BaseBot
 from qtradex.core.dispatch import dispatch
 from qtradex.core.filltest import filltest
 from qtradex.core.live import live
+from qtradex.core.monte_carlo import monte_carlo
 from qtradex.core.papertrade import papertrade

@@ -69,6 +69,7 @@ def dispatch(bot, data, wallet=None, **kwargs):
         "Live",
         "Show Fill Orders",
         "AutoBacktest",
+        "Monte Carlo",
     ]
     choice = select(options)
 
@@ -129,3 +130,5 @@ def dispatch(bot, data, wallet=None, **kwargs):
             qx.core.filltest(bot, data, api_key, api_secret)
     elif choice == 5:
         qx.core.auto_backtest(bot, data, wallet, **kwargs)
+    elif choice == 6:
+        qx.core.monte_carlo(bot, data, wallet, **kwargs)
