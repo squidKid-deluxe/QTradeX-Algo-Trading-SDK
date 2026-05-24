@@ -78,8 +78,11 @@ class LSGAoptions(QPSOoptions):
         self.neurons = []
         self.show_terminal = True
         self.print_tune = False
-        # path to write tunes to
-        self.append_tune = ""
+        self.append_tune = "" # path to write tunes to
+        self.skew_check_period = 20
+        self.skew_threshold = 0.7
+        self.skew_mc_iterations = 70
+        self.skew_perturbation = 0.002
 
 
 def printouts(kwargs):
@@ -387,6 +390,26 @@ class LSGA(QPSO):
                     if improved:
                         synapses.append(tuple(neurons))
                         iteration -= 1
+
+                    # --- 2D Skew check ---
+                    if idx % self.options.skew_check_period == 0:
+                        from qtradex.core.monte_carlo import monte_carlo
+                        try:
+                            skew_bot = deepcopy(bot)
+                            mc = monte_carlo(
+                                skew_bot, self.data, self.wallet.copy(),
+                                iterations=self.options.skew_mc_iterations,
+                                perturbation=self.options.skew_perturbation,
+                                plot=False, **kwargs,
+                            )
+                            if mc["skew_2d"] < self.options.skew_threshold:
+                                deficit = self.options.skew_threshold - mc["skew_2d"]
+                                penalty = 1.0 - deficit
+                                for coord, (score, _) in best_bots.items():
+                                    for k in score:
+                                        score[k] *= penalty
+                        except Exception:
+                            pass
 
                     # Check if optimization should stop
                     if (
