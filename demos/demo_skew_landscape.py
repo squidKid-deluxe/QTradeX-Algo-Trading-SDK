@@ -1,5 +1,6 @@
 """Demo: 1D sinusoidal landscape evolving under LSGA with skew memory."""
 
+import os
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,15 +13,24 @@ def _fake_backtest(
     plot=True, block=True, return_states=False,
     range_periods=True, show=True, fine_data=None, always_trade="smart",
 ):
+    x = float(bot.tune.get("x", 0.5))
     keys, custom = bot.fitness(None, None, None, None)
     ret = {k: custom[k] for k in keys}
     if return_states:
-        raw_states = {"unix": np.array([0, 1]), "trades": []}
+        n = max(2, int(data.days * 86400 / data.candle_size))
+        unix = np.linspace(data.begin + data.candle_size, data.end, n)
+        close = np.full(n, 100.0)
+        growth = np.sin(2 * np.pi * x) * 0.5
+        balances = [
+            {data.asset: 1.0 + growth * i / (n - 1), data.currency: 0.0}
+            for i in range(n)
+        ]
+        raw_states = {"unix": unix, "close": close, "balances": balances, "trades": []}
         states = {
             "detailed_trades": [],
             "begin": data.begin,
             "end": data.end,
-            "candle_size": 1,
+            "candle_size": data.candle_size,
         }
         return ret, raw_states, states
     return ret
@@ -150,9 +160,10 @@ if __name__ == "__main__":
         fig, animate, frames=len(snapshots), interval=800, repeat=True
     )
 
+    gif_path = os.path.join(os.path.dirname(__file__), "skew_landscape_demo.gif")
     try:
-        ani.save("demos/skew_landscape_demo.gif", writer="pillow", fps=1.25)
-        print("Saved demos/skew_landscape_demo.gif")
+        ani.save(gif_path, writer="pillow", fps=1.25)
+        print(f"Saved {gif_path}")
     except Exception as e:
         print(f"GIF save failed ({e}), showing interactively")
         plt.show()
