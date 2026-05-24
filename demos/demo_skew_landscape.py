@@ -30,6 +30,7 @@ qx.backtest = _fake_backtest
 qx.core.backtest = _fake_backtest
 
 import qtradex.optimizers.lsga as lsga_mod
+lsga_mod.backtest = _fake_backtest
 from qtradex.core.base_bot import BaseBot
 from qtradex.private.wallet import PaperWallet
 
