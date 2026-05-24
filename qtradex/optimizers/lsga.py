@@ -38,7 +38,7 @@ from json import dumps as json_dumps
 from multiprocessing import Manager, Process
 from random import choice, choices, randint, random, sample
 from statistics import median
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 # 3RD PARTY MODULES
 import matplotlib.pyplot as plt
@@ -80,9 +80,47 @@ class LSGAoptions(QPSOoptions):
         self.print_tune = False
         self.append_tune = "" # path to write tunes to
         self.skew_check_period = 20
-        self.skew_threshold = 0.7
         self.skew_mc_iterations = 70
         self.skew_perturbation = 0.002
+        self.skew_sigma = 0.01
+        self.skew_memory_cap = 100
+
+
+_skew_memory: List[Tuple[np.ndarray, float]] = []
+
+
+def _normalize_tune(tune, clamps):
+    parts = []
+    for key in sorted(tune.keys()):
+        val = tune[key]
+        lo, _, hi, _ = clamps[key]
+        span = hi - lo
+        if span == 0:
+            span = 1
+        if isinstance(val, np.ndarray):
+            parts.append(((val.astype(float) - lo) / span).ravel())
+        else:
+            parts.append([(float(val) - lo) / span])
+    return np.concatenate(parts)
+
+
+def _apply_skew_memory(new_scores, clamps, sigma):
+    if not _skew_memory:
+        return
+    for _, (score_dict, bot) in enumerate(new_scores):
+        candidate = _normalize_tune(bot.tune, clamps)
+        effective = 1.0
+        for stored_norm, stored_penalty in _skew_memory:
+            if stored_penalty >= effective:
+                continue
+            d = np.linalg.norm(candidate - stored_norm)
+            weight = np.exp(-0.5 * (d / sigma) ** 2)
+            applied = 1.0 - (1.0 - stored_penalty) * weight
+            if applied < effective:
+                effective = applied
+        if effective < 1.0:
+            for k in score_dict:
+                score_dict[k] *= effective
 
 
 def printouts(kwargs):
@@ -343,6 +381,7 @@ class LSGA(QPSO):
                         bound_neurons(bot)
 
                     new_scores = self.retest(todo, done, bots)
+                    _apply_skew_memory(new_scores, bot.clamps, self.options.skew_sigma)
 
                     # Sort bots by fitness score for the selected coordinate
                     coordx = randint(0, len(self.options.fitness_ratios) - 1)
@@ -366,6 +405,7 @@ class LSGA(QPSO):
                         bot.tune = tune
 
                     merged_scores = self.retest(todo, done, bots)
+                    _apply_skew_memory(merged_scores, bot.clamps, self.options.skew_sigma)
 
                     # Merge new scores with previous ones
                     new_scores.extend(merged_scores)
@@ -402,12 +442,22 @@ class LSGA(QPSO):
                                 perturbation=self.options.skew_perturbation,
                                 plot=False, **kwargs,
                             )
-                            if mc["skew_2d"] < self.options.skew_threshold:
-                                deficit = self.options.skew_threshold - mc["skew_2d"]
-                                penalty = 1.0 - deficit
-                                for coord, (score, _) in best_bots.items():
-                                    for k in score:
-                                        score[k] *= penalty
+                            deficit = 2 * (1 - mc["skew_2d"]) ** 2
+                            penalty = max(0.0, 1.0 - deficit)
+                            for coord, (score, _) in best_bots.items():
+                                for k in score:
+                                    score[k] *= penalty
+                            norm = _normalize_tune(bot.tune, bot.clamps)
+                            replaced = False
+                            for i, (sn, sp) in enumerate(_skew_memory):
+                                if np.linalg.norm(norm - sn) < 1e-3:
+                                    _skew_memory[i] = (norm, min(sp, penalty))
+                                    replaced = True
+                                    break
+                            if not replaced:
+                                _skew_memory.append((norm, penalty))
+                                if len(_skew_memory) > self.options.skew_memory_cap:
+                                    _skew_memory.pop(0)
                         except Exception:
                             pass
 
