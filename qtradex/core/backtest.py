@@ -356,7 +356,7 @@ def print_backtest_results(bot, states, data, ret, ticks, candle_size):
             f'[{time.ctime(op["unix"])}]',
             " ",
             direction,
-            it(color, f'{sign}{sigfig((op["roi"]-1)*100, 6):.1f}%'.ljust(8, "0")),
+            it(color, f'{sign}{sigfig((op["roi"]-1)*100, 6):.1f}'.ljust(8, "0") + '%'),
             reason,
         )
     print(json.dumps(ret, indent=4))
