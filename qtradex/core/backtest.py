@@ -347,24 +347,18 @@ def backtest(
 def print_backtest_results(bot, states, data, ret, ticks, candle_size):
     pprint(bot.tune, indent=4)
     for op in states["detailed_trades"]:
-        if op["roi"] >= 1:
-            print(
-                f'[{time.ctime(op["unix"])}]',
-                " ",
-                "BUY " if isinstance(op["object"], Buy) else "SELL",
-                " ",
-                it("green", f'{sigfig((op["roi"]-1)*100, 6):.1f}'.ljust(4, "0")
-                + "% GAIN")
-            )
-        else:
-            print(
-                f'[{time.ctime(op["unix"])}]',
-                " ",
-                "BUY " if isinstance(op["object"], Buy) else "SELL",
-                " ",
-                it("red", f'{sigfig((1-op["roi"])*100, 6):.1f}'.ljust(4, "0")
-                + "% LOSS")
-            )
+        obj = op["object"]
+        direction = "BUY " if isinstance(obj, Buy) else "SELL"
+        reason = f"  {obj.reason}" if getattr(obj, "reason", None) else ""
+        sign = "+" if op["roi"] >= 1 else ""
+        color = "green" if op["roi"] >= 1 else "red"
+        print(
+            f'[{time.ctime(op["unix"])}]',
+            " ",
+            direction,
+            it(color, f'{sign}{sigfig((op["roi"]-1)*100, 6):.1f}'.ljust(8, "0") + '%'),
+            reason,
+        )
     print(json.dumps(ret, indent=4))
     print(
         f"Days: {data.days:.2f}   Ticks: {ticks}   "
