@@ -3,3 +3,8 @@
 <img src="screenshots/Screenshot from 2025-04-16 18-45-47.png"></img>
 <img src="screenshots/Screenshot from 2025-05-01 11-48-04.png"></img>
 <img src="screenshots/Screenshot from 2025-05-02 18-50-54.png"></img>
+<img src="screenshots/Screenshot from 2026-05-23 13-33-09.png"></img>
+<img src="screenshots/Screenshot from 2026-05-25 11-28-53.png"></img>
+<img src="screenshots/Screenshot from 2026-05-25 11-29-58.png"></img>
+<img src="screenshots/Screenshot from 2026-05-25 11-30-36.png"></img>
+<img src="screenshots/Screenshot from 2026-05-25 11-31-26.png"></img>
