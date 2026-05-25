@@ -52,6 +52,7 @@ from qtradex.optimizers.qpso import QPSO, QPSOoptions
 from qtradex.optimizers.utilities import (bound_neurons, end_optimization,
                                           merge, print_tune)
 from qtradex.private.wallet import PaperWallet
+from qtradex.core.monte_carlo import monte_carlo
 
 
 class LSGAoptions(QPSOoptions):
@@ -79,11 +80,11 @@ class LSGAoptions(QPSOoptions):
         self.show_terminal = True
         self.print_tune = False
         self.append_tune = "" # path to write tunes to
-        self.skew_check_period = 20
+        self.skew_check_period = 2
         self.skew_mc_iterations = 70
         self.skew_perturbation = 0.002
         self.skew_sigma = 0.01
-        self.skew_memory_cap = 100
+        self.skew_memory_cap = 1000
 
 
 _skew_memory: List[Tuple[np.ndarray, float]] = []
@@ -107,7 +108,7 @@ def _normalize_tune(tune, clamps):
 def _apply_skew_memory(new_scores, clamps, sigma):
     if not _skew_memory:
         return
-    for _, (score_dict, bot) in enumerate(new_scores):
+    for score_dict, bot in new_scores:
         candidate = _normalize_tune(bot.tune, clamps)
         effective = 1.0
         for stored_norm, stored_penalty in _skew_memory:
@@ -120,7 +121,8 @@ def _apply_skew_memory(new_scores, clamps, sigma):
                 effective = applied
         if effective < 1.0:
             for k in score_dict:
-                score_dict[k] *= effective
+                v = score_dict[k]
+                score_dict[k] = v * effective if v >= 0 else v * (2 - effective)
 
 
 def printouts(kwargs):
@@ -178,7 +180,7 @@ def printouts(kwargs):
         "green",
         f"Stochastic {len(kwargs['parameters'])}-Dimensional {n_coords} Coordinate "
         "Ascent with Pruned Neuroplasticity in Eroding Local Search Genetic Algorithm "
-        "Optimization, Enhanced by Cyclic Simulated Annealing",
+        "Optimization, Enhanced by Cyclic Simulated Annealing and 2D Monte Carlo Skew Adjustment",
     )
     msg += "\n\n"
     msg += f"\n{print_table(table, render=True, colors=colors, pallete=[0, 34, 33, 178])}\n"
@@ -261,6 +263,7 @@ class LSGA(QPSO):
         iteration = 0  # Tracks iterations during optimization
         idx = 0  # Index for fitness evaluation
         last_improvement = 0
+        last_skew_check = -999
         n_backtests = 1
         synapses = []  # Tracks past neuron connections
 
@@ -354,7 +357,7 @@ class LSGA(QPSO):
 
                     # Create population of bots for evaluation
                     bots = [deepcopy(bot) for _ in range(self.options.population)]
-                    for botdx, bot in enumerate(bots):
+                    for bot in bots:
                         # Quantum particle drunkwalk: Alter neurons in selected synapse
                         for neuron in neurons:
                             if not bot.clamps[neuron][3]:
@@ -413,14 +416,16 @@ class LSGA(QPSO):
 
                     boom = []
                     improved = False
+                    improved_bot = None
                     for new_score, bot in new_scores:
-                        for coord, (check_score, check_bot) in best_bots.copy().items():
+                        for coord, (check_score, _) in best_bots.copy().items():
                             if new_score[coord] > check_score[coord]:
                                 best_bots[coord] = (new_score, bot)
                                 boom.append(coord)
                                 improved = True
                                 improvements += 1
                                 last_improvement = idx
+                                improved_bot = bot
 
                     # Print relevant information and results if enabled
                     if self.options.show_terminal:
@@ -431,35 +436,35 @@ class LSGA(QPSO):
                         synapses.append(tuple(neurons))
                         iteration -= 1
 
-                    # --- 2D Skew check ---
-                    if idx % self.options.skew_check_period == 0:
-                        from qtradex.core.monte_carlo import monte_carlo
-                        try:
-                            skew_bot = deepcopy(bot)
-                            mc = monte_carlo(
-                                skew_bot, self.data, self.wallet.copy(),
-                                iterations=self.options.skew_mc_iterations,
-                                perturbation=self.options.skew_perturbation,
-                                plot=False, **kwargs,
-                            )
-                            deficit = 2 * (1 - mc["skew_2d"]) ** 2
-                            penalty = max(0.0, 1.0 - deficit)
-                            for coord, (score, _) in best_bots.items():
-                                for k in score:
-                                    score[k] *= penalty
-                            norm = _normalize_tune(bot.tune, bot.clamps)
-                            replaced = False
-                            for i, (sn, sp) in enumerate(_skew_memory):
-                                if np.linalg.norm(norm - sn) < 1e-3:
-                                    _skew_memory[i] = (norm, min(sp, penalty))
-                                    replaced = True
-                                    break
-                            if not replaced:
-                                _skew_memory.append((norm, penalty))
-                                if len(_skew_memory) > self.options.skew_memory_cap:
-                                    _skew_memory.pop(0)
-                        except Exception:
-                            pass
+                        # --- 2D Skew check on the improved bot ---
+                        if idx - last_skew_check >= self.options.skew_check_period:
+                            last_skew_check = idx
+                            try:
+                                skew_bot = deepcopy(improved_bot)
+                                mc = monte_carlo(
+                                    skew_bot, self.data, self.wallet.copy(),
+                                    iterations=self.options.skew_mc_iterations,
+                                    perturbation=self.options.skew_perturbation,
+                                    plot=False, **kwargs,
+                                )
+                                deficit = 2 * (1 - mc["skew_2d"]) ** 2
+                                penalty = max(0.0, 1.0 - deficit)
+                                for coord, (score, _) in best_bots.items():
+                                    for k in score:
+                                        score[k] *= penalty
+                                norm = _normalize_tune(improved_bot.tune, improved_bot.clamps)
+                                replaced = False
+                                for i, (sn, sp) in enumerate(_skew_memory):
+                                    if np.linalg.norm(norm - sn) < 1e-3:
+                                        _skew_memory[i] = (norm, min(sp, penalty))
+                                        replaced = True
+                                        break
+                                if not replaced:
+                                    _skew_memory.append((norm, penalty))
+                                    if len(_skew_memory) > self.options.skew_memory_cap:
+                                        _skew_memory.pop(0)
+                            except Exception:
+                                pass
 
                     # Check if optimization should stop
                     if (

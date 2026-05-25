@@ -106,10 +106,13 @@ def capture(sigma):
     eff = raw.astype(float).copy()
     for i, x in enumerate(xs):
         cand = np.array([x])
+        mult = 1.0
         for stored_norm, sp in lsga_mod._skew_memory:
             d = np.linalg.norm(cand - stored_norm)
             w = np.exp(-0.5 * (d / sigma) ** 2)
-            eff[i] *= 1.0 - (1.0 - sp) * w
+            mult = min(mult, 1.0 - (1.0 - sp) * w)
+        r = raw[i]
+        eff[i] = r * mult if r >= 0 else r * (2 - mult)
     snapshots.append((xs.copy(), raw.copy(), eff.copy(), list(lsga_mod._skew_memory)))
 
 
@@ -137,8 +140,8 @@ if __name__ == "__main__":
     opt = lsga_mod.LSGAoptions()
     opt.population = 15
     opt.offspring = 5
-    opt.epochs = 100
-    opt.skew_check_period = 10
+    opt.epochs = 5000
+    opt.skew_check_period = 30
     opt.skew_mc_iterations = 5
     opt.improvements = 100000
     opt.show_terminal = False

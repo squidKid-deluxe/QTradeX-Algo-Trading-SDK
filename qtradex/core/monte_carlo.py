@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import qtradex as qx
-from qtradex.plot.utilities import unix_to_stamp
+from qtradex.plot.utilities import unix_to_stamp, maximize_window
 from qtradex.private.wallet import PaperWallet
 
 _WORKER_BOT = None
@@ -129,7 +129,7 @@ def _roi_curve(raw_states, asset, currency, pc=0):
     return curve
 
 
-def monte_carlo(bot, data, wallet=None, iterations=50, perturbation=0.01, plot=True, block=True, **kwargs):
+def monte_carlo(bot, data, wallet=None, iterations=500, perturbation=0.01, plot=True, block=True, **kwargs):
     if wallet is None:
         wallet = PaperWallet({data.asset: 0, data.currency: 1})
 
@@ -252,6 +252,15 @@ def monte_carlo(bot, data, wallet=None, iterations=50, perturbation=0.01, plot=T
         print(f"  P5: {p5:.4f}   P95: {p95:.4f}")
         print(f"  2D Skew:      {skew_2d:.4f}  (0=worst-bound, 0.5=centered, 1=best-bound)")
         print(f"Worse than baseline: {(finals <= baseline_final).mean() * 100:.1f}%")
+
+        maximize_window()
+
+        def adjust(_):
+            plt.tight_layout()
+            plt.subplots_adjust(hspace=0)
+
+        plt.gcf().canvas.mpl_connect("resize_event", adjust)
+
         plt.show(block=block)
 
     bot.tune = orig_tune

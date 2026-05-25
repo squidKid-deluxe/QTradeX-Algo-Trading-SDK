@@ -18,3 +18,6 @@ qtradex/optimizers/__pycache__/
 qtradex/plot/__pycache__/
 qtradex/private/__pycache__/
 qtradex/public/__pycache__/
+
+# tune caches
+demos/tunes/
