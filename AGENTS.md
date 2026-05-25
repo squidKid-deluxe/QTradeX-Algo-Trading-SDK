@@ -12,7 +12,8 @@ This rewrites `qtradex/indicators/tulipy_wrapped.py` and the subpackage `__init_
 
 ## Cython
 - `qtradex/indicators/utilities.pyx` auto-compiles via setuptools.
-- `qtradex/indicators/qi.c` is pre-generated (checked in). Generated `.c` files are gitignored.
+- `utilities.c` and `qi.c` are gitignored — built fresh during `pip install -e .`
+- The sole `.pyx` source is `utilities.pyx`. `qi.py` is pure Python.
 
 ## Testing
 - No formal test suite or CI tests.
@@ -33,8 +34,8 @@ Only a release-publish workflow (`.github/workflows/publish.yml`). No test/lint 
 - Dispatch: `qx.core.dispatch(bot, data, wallet)` — interactive CLI menu (backtest / optimize / papertrade / live).
 - Data: `qtradex.public.Data(exchange, asset, currency, begin, end)` — fetches candles via CCXT, yfinance, etc.
 - Optimizers: QPSO, LSGA, IPSE, AION in `qtradex.optimizers`.
-- IPC: JSON file-based concurrent IPC in `common/pipe/`.
-- Tune caching: per-bot `tunes/` directory next to the bot's source file.
+- IPC/candle cache: `common/pipe/` (gitignored) — JSON file-based concurrent IPC and cached candle data.
+- Tune caching: per-bot `tunes/` directory next to the bot's source file (`demos/tunes/` is gitignored).
 
 ## Platform
 Linux-only (classifier: `Operating System :: POSIX :: Linux`).

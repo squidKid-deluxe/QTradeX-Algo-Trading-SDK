@@ -105,11 +105,10 @@ class EMACrossBot(qx.BaseBot):
             "fast_ema_period": 10.0,
             "slow_ema_period": 50.0
         }
-        self.clamps = [
-            # min, max
-            [5,   50 ], # fast_ema
-            [20,  100], # slow_ema
-        ]
+        self.clamps = {
+            "fast_ema_period": [5, 10, 50, 1],
+            "slow_ema_period": [20, 50, 100, 1],
+        }
 
     def indicators(self, data):
         return {
@@ -159,8 +158,8 @@ See more bots in [QTradeX AI Agents](https://github.com/squidKid-deluxe/QTradeX-
 | Step | What to Do                                                      |
 | ---- | --------------------------------------------------------------- |
 | 1️⃣  | Build a bot with custom logic by subclassing `BaseBot`          |
-| 2️⃣  | Backtest using `qx.core.dispatch` + historical data             |
-| 3️⃣  | Optimize with any algorithm you like (optmized tunes stored in `/tunes`) |
+| 2️⃣  | Backtest using `qx.dispatch` + historical data             |
+| 3️⃣  | Optimize with any algorithm you like (optimized tunes stored per-bot in `tunes/`) |
 | 4️⃣  | Deploy live                                                     |
 
 ---
