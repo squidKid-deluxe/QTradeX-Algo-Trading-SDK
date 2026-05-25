@@ -105,6 +105,8 @@ def load_fresh_data(
 ) -> Data:
     if stride is None:
         stride = candle_size
+        hold_stride = stride
+        hold_candle_size = candle_size
     else:
         hold_stride = stride
         hold_candle_size = candle_size
@@ -239,9 +241,10 @@ def load_fresh_data(
     data = {k: np.array(v) for k, v in data.items()}  # Final conversion to numpy arrays
     data["candle_size"] = np.full(data["unix"].shape, hold_candle_size)
 
-    # FIXME: stride is borken, so for now, i'm just reaggregating to get the right stride
     if hold_stride != hold_candle_size:
         reagg_data = reaggregate(data, hold_candle_size, hold_stride)
+    else:
+        reagg_data = data
 
     # Create and return the Data object
     data_class = Data(
