@@ -12,8 +12,6 @@ from typing import Dict, Tuple
 import cython
 import numpy as np
 import numpy.typing as npt
-import qtradex
-import tulipy as ti
 from numpy import ndarray
 from qtradex.common.utilities import truncate
 from qtradex.indicators import tulipy_wrapped as ti
@@ -206,7 +204,7 @@ def vortex(
 @cache
 @float_period(1, 2, 3, 4, 5)
 def kst(
-    close: cnp.ndarray,
+    close: np.ndarray,
     roc1_period: cython.int,
     roc2_period: cython.int,
     roc3_period: cython.int,
@@ -243,7 +241,7 @@ def kst(
     roc3 = ti.roc(close, roc3_period)
     roc4 = ti.roc(close, roc4_period)
 
-    roc1, roc2, roc3, roc4 = qtradex.common.utilities.truncate(roc1, roc2, roc3, roc4)
+    roc1, roc2, roc3, roc4 = truncate(roc1, roc2, roc3, roc4)
 
     # Calculate KST
     _kst = roc1 * 1 + roc2 * 2 + roc3 * 3 + roc4 * 4
@@ -263,7 +261,7 @@ def kst(
 @cache
 @float_period(1, 2)
 def frama(
-    close: cnp.ndarray, period: cython.int, fractal_period: cython.int
+    close: np.ndarray, period: cython.int, fractal_period: cython.int
 ) -> npt.NDArray[DATA_TYPE]:
     """
     Calculate the Fractal Adaptive Moving Average (FRAMA).
@@ -505,7 +503,7 @@ def typed_macd(
     ma_short = function(close, short_period)
     ma_long = function(close, long_period)
 
-    ma_short, ma_long = qtradex.common.utilities.truncate(ma_short, ma_long)
+    ma_short, ma_long = truncate(ma_short, ma_long)
 
     # Calculate MACD
     macd = ma_short - ma_long
@@ -513,7 +511,7 @@ def typed_macd(
     # Calculate the signal line (moving average of MACD)
     signal_line = function(macd, signal_period)
 
-    macd, signal_line = qtradex.common.utilities.truncate(macd, signal_line)
+    macd, signal_line = truncate(macd, signal_line)
 
     # Calculate the histogram
     histogram = macd - signal_line
@@ -577,7 +575,7 @@ def typed_bbands(
 @cache
 @float_period(1, 2)
 def tsi(
-    close: cnp.ndarray, long_period: cython.int, short_period: cython.int
+    close: np.ndarray, long_period: cython.int, short_period: cython.int
 ) -> npt.NDArray[DATA_TYPE]:
     """
     Calculate the Trend Strength Indicator (TSI).
@@ -681,9 +679,9 @@ def smi(
 @cache
 @float_period(3)
 def eri(
-    high: cnp.ndarray,
-    low: cnp.ndarray,
-    close: cnp.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
     ma_period: cython.int,
     ma_type: cython.int,
 ) -> Tuple[npt.NDArray[DATA_TYPE], npt.NDArray[DATA_TYPE]]:
@@ -735,13 +733,13 @@ def eri(
 @cache
 @float_period(3)
 def supertrend(
-    high: cnp.ndarray[DATA_TYPE],
-    low: cnp.ndarray[DATA_TYPE],
-    close: cnp.ndarray[DATA_TYPE],
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
     period: int,
     multiplier_top: float,
     multiplier_bottom: float,
-) -> tuple[cnp.ndarray[DATA_TYPE], cnp.ndarray[DATA_TYPE], cnp.ndarray[DATA_TYPE]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Calculate the Supertrend indicator.
 
@@ -763,12 +761,12 @@ def supertrend(
 
     # Calculate the average of high and low
     hla = (trailing_high + trailing_low) / 2
-    hla, atr = qtradex.common.utilities.truncate(hla, atr)
+    hla, atr = truncate(hla, atr)
 
     # Initialize basic upper and lower bands
     upperband = hla + (multiplier_top * atr)
     lowerband = hla - (multiplier_bottom * atr)
-    close, _ = qtradex.common.utilities.truncate(close, atr)
+    close, _ = truncate(close, atr)
 
     supertrend = []
     toggle = close[0] > lowerband[0]

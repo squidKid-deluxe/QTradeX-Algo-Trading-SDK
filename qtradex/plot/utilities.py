@@ -11,7 +11,12 @@ from matplotlib.collections import LineCollection
 from qtradex.common.utilities import NIL, expand_bools, rotate, sigfig
 from qtradex.private.signals import Buy, Sell
 
-matplotlib.use("TkAgg")
+if not os.environ.get("MPLBACKEND"):
+    try:
+        import tkinter
+    except ImportError:
+        os.environ.setdefault("MPLBACKEND", "Agg")
+    matplotlib.use("TkAgg")
 
 def maximize_window():
     mng = plt.get_current_fig_manager()

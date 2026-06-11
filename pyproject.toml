@@ -38,6 +38,7 @@ qtradex-tune-manager = "qtradex.core.tune_manager:main"
 [tool.setuptools]
 packages = {find = {where = ["."]}}
 include-package-data = true
-
-[tool.setuptools.package-data]
-qtradex = ["*.pyx", "*.pxd"]
+ext-modules = [
+    {name = "qtradex.indicators.utilities", sources = ["qtradex/indicators/utilities.pyx"]},
+    {name = "qtradex.indicators.qi", sources = ["qtradex/indicators/qi.pyx"]},
+]
