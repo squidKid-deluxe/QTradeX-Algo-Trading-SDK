@@ -21,12 +21,15 @@ dependencies = [
     "yfinance",
     "tulipy",
     "finance-datareader",
-    "bitshares-signing",
     "numpy<2",
     "matplotlib",
     "scipy",
     "ttkbootstrap",
 ]
+
+[project.optional-dependencies]
+full = ["qtradex[bitshares]"]
+bitshares = ["bitshares-signing"]
 
 [project.urls]
 Homepage = "https://github.com/squidKid-deluxe/QTradeX-Algo-Trading-SDK"

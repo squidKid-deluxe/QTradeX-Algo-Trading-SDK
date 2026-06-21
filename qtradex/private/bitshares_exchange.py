@@ -1,12 +1,22 @@
-import bitshares_signing.rpc as bitshares_rpc
-from bitshares_signing import broker, prototype_order
-from bitshares_signing.config import NODES
+try:
+    import bitshares_signing.rpc as bitshares_rpc
+    from bitshares_signing import broker, prototype_order
+    from bitshares_signing.config import NODES
+    _bts_ok = True
+except ImportError as _bts_err:
+    bitshares_rpc = broker = prototype_order = NODES = None
+    _bts_ok = False
+    _bts_err_msg = str(_bts_err)
 
 DEV = True
 
 
 class BitsharesExchange:
     def __init__(self, user, wif):
+        if not _bts_ok:
+            raise ImportError(
+                "bitshares-signing not installed. Install with: pip install qtradex[bitshares]"
+            )
         self.rpc = bitshares_rpc.wss_handshake()
         self.account_name = user
         self.account_id = bitshares_rpc.rpc_get_account(self.rpc, self.account_name)[
@@ -68,32 +78,6 @@ class BitsharesExchange:
             raise ValueError("Failed to authenticate!")
 
     def fetch_my_trades(self, symbol):
-        """
-        This function has to take the bitshares_rpc style fill orders and make them ccxt style:
-        {
-            'info':         { ... },                    // the original decoded JSON as is
-            'id':           '12345-67890:09876/54321',  // string trade id
-            'timestamp':    1502962946216,              // Unix timestamp in milliseconds
-            'symbol':       'ETH/BTC',                  // symbol
-            'side':         'buy',                      // direction of the trade, 'buy' or 'sell'
-            'takerOrMaker': 'taker',                    // string, 'taker' or 'maker'
-            'price':        0.06917684,                 // float price in quote currency
-            'amount':       1.5,                        // amount of base currency
-            'cost':         0.10376526,                 // total cost, `price * amount`,
-            'fees': [],
-        }
-        from this:
-        {
-            "exchange_order_id": str,
-            "unix": float,
-            "sequence": int,
-            "fee": fee,
-            "is_maker": bool,
-            "price": float,
-            "amount": float,
-            "type": "SELL" / "BUY",
-        }
-        """
         ret = []
         try:
             fills = bitshares_rpc.rpc_fill_order_history(
@@ -124,13 +108,11 @@ class BitsharesExchange:
 
         if order_type == "swap":
             pass
-            # FIXME implement swaps
         if order_type == "limit":
             if side not in ["buy", "sell"]:
                 raise ValueError
             order["edicts"].append({"op": side, "amount": amount, "price": price})
             return broker(order)
-            # FIXME order id callback
         else:
             raise ValueError(f"Invalid order_type {order_type}")
 
@@ -168,12 +150,5 @@ class BitsharesExchange:
             return self.fetch_balance()
 
     def fetch_ticker(self, symbol):
-        """
-        Returns:
-            {
-                "bid": float(),
-                "ask": float(),
-            }
-        """
         pair = self._prototype(symbol)["header"]
         return bitshares_rpc.rpc_ticker(self.rpc, pair["asset_id"], pair["currency_id"])

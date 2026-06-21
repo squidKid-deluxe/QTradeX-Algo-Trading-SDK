@@ -14,7 +14,6 @@ from qtradex.public.klines_alphavantage import (
     klines_alphavantage_forex,
     klines_alphavantage_stocks,
 )
-from qtradex.public.klines_bitshares import klines_bitshares
 from qtradex.public.klines_ccxt import BadTimeframeError, klines_ccxt
 from qtradex.public.klines_cryptocompare import klines_cryptocompare
 from qtradex.public.klines_fdr import klines_fdr
@@ -419,7 +418,7 @@ class Data:
                     f"gathering data from {self.exchange}, {begin} to {end}, candle size {candle_size}"
                 )
             exchange_functions = {
-                "bitshares": klines_bitshares,
+                "bitshares": lambda *a, **kw: __import__("qtradex.public.klines_bitshares", fromlist=["klines_bitshares"]).klines_bitshares(*a, **kw),
                 "cryptocompare": klines_cryptocompare,
                 "alphavantage stocks": klines_alphavantage_stocks,
                 "alphavantage forex": klines_alphavantage_forex,

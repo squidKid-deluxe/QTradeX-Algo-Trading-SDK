@@ -57,9 +57,6 @@ import threading
 import time
 
 import ccxt
-from qtradex.private.bitshares_exchange import BitsharesExchange
-
-
 class Execution:
     def __init__(self, exchange_id, asset, currency, api_key=None, api_secret=None):
         """
@@ -67,6 +64,7 @@ class Execution:
         """
         self.symbol = f"{asset}/{currency}"
         if exchange_id == "bitshares":
+            from qtradex.private.bitshares_exchange import BitsharesExchange
             self.exchange = BitsharesExchange(user=api_key, wif=api_secret)
         else:
             self.exchange = getattr(ccxt, exchange_id)(
