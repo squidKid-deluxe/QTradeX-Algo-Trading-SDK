@@ -10,6 +10,7 @@ These functions are wrapped as *.pxd and compiled in Cython.
 from typing import Dict, Tuple
 
 import cython
+cimport numpy as cnp
 import numpy as np
 import numpy.typing as npt
 from numpy import ndarray

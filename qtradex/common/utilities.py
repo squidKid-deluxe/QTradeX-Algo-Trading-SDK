@@ -284,7 +284,7 @@ def race_write(doc="", text=""):
     """
     text = str(text)
     i = 0
-    doc = PATH + "pipe/" + doc
+    doc = os.path.join(PATH, "pipe", doc)
     while True:
         try:
             time.sleep(0.05 * i**2)
@@ -313,7 +313,7 @@ def race_read(doc):
     """
     Concurrent Read JSON from File Operation
     """
-    doc = PATH + "pipe/" + doc
+    doc = os.path.join(PATH, "pipe", doc)
     i = 0
     while True:
         try:
@@ -378,7 +378,7 @@ def json_ipc(doc="", text="", initialize=False, append=False):
     if not act == "appending":
         tag = "<<< JSON IPC >>>"
     # determine where we are in the file system; change directory to pipe folder
-    path = f"{PATH}/pipe"
+    path = os.path.join(PATH, "pipe")
     # ensure we're writing json then add prescript and postscript for clipping
     try:
         text = tag + json_dumps(json_loads(text)) + tag if text else text
@@ -391,9 +391,8 @@ def json_ipc(doc="", text="", initialize=False, append=False):
         path += "/comptroller"
         text = f"\n{text}"
     # create the pipe subfolder
-    if initialize:
-        os.makedirs(path, exist_ok=True)
-        os.makedirs(f"{path}/comptroller", exist_ok=True)
+    os.makedirs(path, exist_ok=True)
+    os.makedirs(f"{path}/comptroller", exist_ok=True)
     if doc:
         doc = f"{path}/{doc}"
         # race read/write until satisfied
@@ -419,14 +418,9 @@ def json_ipc(doc="", text="", initialize=False, append=False):
                         handle.close()
                         break
             except Exception:
-                if iteration == 1:
-                    if "json_ipc" in text:
-                        print("no json_ipc pipe found, initializing...")
-                    else:
-                        print(  # only if it happens more than once
-                            iteration,
-                            f"json_ipc failed while {act} to {doc} retrying...\n",
-                        )
+                if iteration == 0 and act == "reading" and not os.path.exists(doc):
+                    with open(doc, "w") as handle:
+                        handle.write(f"{tag}{{}}{tag}")
                 elif iteration == 5:
                     # maybe there is no pipe? auto initialize the pipe!
                     json_ipc(initialize=True)

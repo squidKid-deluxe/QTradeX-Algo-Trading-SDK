@@ -26,6 +26,8 @@ def float_period(func, args, indices):
     cdef list calls = [[] for _ in range(len(args))]  # Holds adjusted values
     cdef list ratios = []  # Holds the ratios for weighting
     cdef int use_both = False
+    cdef int n, m, i, j
+    cdef double val
 
     # Validate input types
     for idx in indices:
@@ -61,13 +63,15 @@ def float_period(func, args, indices):
     if len(results) == 1:
         return results[0]  # If only one result, return it directly
     else:
-        # Perform element-wise weighted combination
-        combined = []
-        for i in range(len(results[0])):  # Assuming results are iterable
-            combined_value = 0
-            for j in range(len(results)):
-                combined_value += results[j][i] * (ratios[j] if j < len(ratios) else 1)
-            combined.append(combined_value)
+        # Perform element-wise weighted combination into a numpy array
+        n = len(results[0])
+        m = len(results)
+        combined = np.empty(n, dtype=np.float64)
+        for i in range(n):
+            val = 0.0
+            for j in range(m):
+                val += results[j][i] * (ratios[j] if j < len(ratios) else 1)
+            combined[i] = val
         return combined
 
 # def float_period(func, tuple args, tuple indices):
