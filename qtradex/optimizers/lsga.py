@@ -86,6 +86,11 @@ class LSGAoptions(QPSOoptions):
         self.skew_sigma = 0.01
         self.skew_memory_cap = 1000
 
+        # walk-forward consistency gate
+        self.select_data = None            # None=auto-split; Data=explicit SELECT; False=disable
+        self.consistency_fn = None         # None = built-in _adr_consistency
+        self.consistency_target = 3.0      # target TRAIN/SELECT ADR ratio at full intensity
+
 
 _skew_memory: List[Tuple[np.ndarray, float]] = []
 
@@ -214,6 +219,21 @@ def retest_process(bot, data, wallet, todo, done, **kwargs):
         print("Compute process ending...")
 
 
+def _adr_consistency(bot, train_result, select_result, intensity, options):
+    train_adr = train_result["roi"] / max(train_result.get("days", 1), 1)
+    select_adr = select_result["roi"] / max(select_result.get("days", 1), 1)
+
+    if train_adr <= 0 or select_adr <= 0:
+        return False  # cull — losing money on either slice
+
+    threshold = options.consistency_target + (1 - intensity) * 50
+
+    if train_adr / select_adr >= threshold:
+        return False  # cull — suspiciously better on TRAIN
+
+    return True  # keep
+
+
 class LSGA(QPSO):
     def __init__(self, data, wallet=None, options=None):
         if wallet is None:
@@ -221,6 +241,22 @@ class LSGA(QPSO):
         self.options = options if options is not None else LSGAoptions()
         self.data = data
         self.wallet = wallet
+
+        # walk-forward: data split
+        sd = self.options.select_data
+        if sd is None:
+            split = int(len(data) * 2 / 3)
+            self._train_data = data[:split]
+            self._select_data = data[split:]
+            self._gate_enabled = True
+        elif sd is False:
+            self._train_data = data
+            self._select_data = None
+            self._gate_enabled = False
+        else:
+            self._train_data = data
+            self._select_data = sd
+            self._gate_enabled = True
 
     # check_improved and enthogen are inherited from QPSO
 
@@ -266,6 +302,8 @@ class LSGA(QPSO):
         last_skew_check = -999
         n_backtests = 1
         synapses = []  # Tracks past neuron connections
+        _wf_culled = 0
+        _wf_survived = 0
 
         # Reset the given bot and apply neuron boundaries
         bot.reset()
@@ -386,6 +424,30 @@ class LSGA(QPSO):
                     new_scores = self.retest(todo, done, bots)
                     _apply_skew_memory(new_scores, bot.clamps, self.options.skew_sigma)
 
+                    # ponytail: walk-forward consistency gate — sequential SELECT backtest, population is small
+                    if self._gate_enabled:
+                        select_scores = []
+                        for candidate in bots:
+                            r = backtest(deepcopy(candidate), self._select_data, deepcopy(self.wallet), plot=False, **kwargs)
+                            select_scores.append(r)
+
+                        gate_scores = []
+                        for (train_score, cbot), select_score in zip(new_scores, select_scores):
+                            train_days = len(self._train_data)
+                            select_days = len(self._select_data)
+                            train_adr = train_score["roi"] / max(train_days, 1)
+                            intensity = max(0.0, min(1.0, train_adr / 0.005))
+                            fn = self.options.consistency_fn or _adr_consistency
+                            if fn(cbot, train_score, select_score, intensity, self.options):
+                                gate_scores.append((train_score, cbot))
+                                _wf_survived += 1
+                            else:
+                                _wf_culled += 1
+
+                        if len(gate_scores) >= 2:
+                            new_scores = gate_scores
+                        # else: too few survivors, skip gate this gen (keep original new_scores)
+
                     # Sort bots by fitness score for the selected coordinate
                     coordx = randint(0, len(self.options.fitness_ratios) - 1)
                     new_scores.sort(
@@ -474,6 +536,10 @@ class LSGA(QPSO):
                         raise KeyboardInterrupt
 
             except KeyboardInterrupt:
+                if self._gate_enabled:
+                    best_bots["wf_intensity"] = max(0.0, min(1.0, _wf_survived / max(_wf_culled + _wf_survived, 1)))
+                    best_bots["wf_culled"] = _wf_culled
+                    best_bots["wf_survived"] = _wf_survived
                 end_optimization(best_bots, self.options.print_tune)
                 return best_bots
             finally:

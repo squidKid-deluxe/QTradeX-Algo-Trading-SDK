@@ -99,7 +99,12 @@ def print_tune(score, bot, render=False):
 
 def end_optimization(best_bots, show):
     msg = "\033c=== FINAL TUNES ===\n\n"
-    for coord, (score, bot) in best_bots.items():
+    for key, value in best_bots.items():
+        # ponytail: metadata keys (wf_intensity, etc.) are not (score, bot) tuples — skip them
+        if not isinstance(value, tuple) or len(value) != 2:
+            continue
+        score, bot = value
+        coord = key
         name = f"BEST {coord.upper()} TUNE"
         msg += "## " + name + "\n\n"
         msg += print_tune(score, bot, render=True)
