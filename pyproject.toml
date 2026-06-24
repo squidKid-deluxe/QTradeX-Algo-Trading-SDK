@@ -38,6 +38,9 @@ Issues = "https://github.com/squidKid-deluxe/QTradeX-Algo-Trading-SDK/issues"
 [project.scripts]
 qtradex-tune-manager = "qtradex.core.tune_manager:main"
 
+[tool.cibuildwheel]
+build = "cp3{9,10,11,12}-manylinux_x86_64"
+
 [tool.setuptools]
 packages = {find = {where = ["."]}}
 include-package-data = true
