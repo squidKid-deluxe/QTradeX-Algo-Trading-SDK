@@ -151,7 +151,27 @@ class Data:
             last=self.raw_candles["close"][-1],
         )
 
+    def __len__(self):
+        return len(self.raw_candles.get("close", []))
+
     def __getitem__(self, index):
+        if isinstance(index, slice):
+            raw = {k: v[index] for k, v in self.raw_candles.items()}
+            d = Data.__new__(Data)
+            d.raw_candles = raw
+            d.exchange = self.exchange
+            d.asset = self.asset
+            d.currency = self.currency
+            d.begin = int(raw["unix"][0])
+            d.end = int(raw["unix"][-1])
+            d.days = (d.end - d.begin) / 86400
+            d.candle_size = self.candle_size
+            d.base_size = self.base_size
+            d.fine_data = self.fine_data
+            d.pool = self.pool
+            d.api_key = self.api_key
+            d.intermediary = self.intermediary
+            return d
         return self.raw_candles[index]
 
     def update_candles(self, begin, end):

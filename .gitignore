@@ -22,5 +22,8 @@ qtradex/public/__pycache__/
 # tune caches
 demos/tunes/
 
+# demos
+demos/__pycache__/
+
 # planning docs (contracts, specs, scratch)
 planning/
